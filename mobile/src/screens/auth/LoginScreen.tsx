@@ -14,6 +14,7 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '../../theme/colors';
 import SkeletonOverlay from '../../components/SkeletonOverlay';
 import { loginUser } from '../../services/api';
+import { saveSession } from '../../services/session';
 
 const ATHLETE_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAYMw7I7WKGnzA1eHJuJXNMuJbpjwVgTNFaSBx8L5_Uxg3i4SGZnI3xSCzPs5aJNKPYhEt-jxPUJ22W77z-n3vhqh18AffQZxJI3dvq0Qq_KWGucz0VFcf9dDCZGXwwuMLL2sVjLUo2ItyV6zYZtQUFu7bFap_OsvVzQBTh87yloPEHYuDPeMyWRIYuA2NoACG1EiuQsx7IO12BnOab4cihPYcr_V8ot09H2Ss8A9MQ3C25msfBGfQEZdcZrsl85BAEBEGQ1BQA7Pk';
@@ -23,6 +24,8 @@ const GOOGLE_IMG =
 
 export default function LoginScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [authenticating, setAuthenticating] = useState(false);
@@ -35,6 +38,7 @@ export default function LoginScreen({ navigation }: any) {
     try {
       const res = await loginUser({ phone, password });
       if (res?.token) {
+        await saveSession(res.token, res.user || res.data || null);
         setTimeout(() => {
           setAuthenticating(false);
           navigation.replace('MainTabs');
@@ -53,8 +57,8 @@ export default function LoginScreen({ navigation }: any) {
   return (
     <View style={styles.root}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? undefined : undefined} style={{ flex: 1 }}>
-        <View style={[styles.main, width >= 1024 && { flexDirection: 'row' }]}>
-          {width >= 1024 && (
+        <View style={[styles.main, isLg && { flexDirection: 'row' }]}>
+          {isLg && (
             <View style={styles.visualPanel}>
               <Image source={{ uri: ATHLETE_IMG }} style={styles.visualImage} />
               <View style={styles.visualGradient} />
@@ -81,10 +85,10 @@ export default function LoginScreen({ navigation }: any) {
             </View>
           )}
 
-          <View style={styles.formPanel}>
-            <View style={styles.formInner}>
+          <View style={[styles.formPanel, isMd && { paddingHorizontal: Spacing.marginDesktop }]}>
+            <View style={[styles.formInner, isMd && { maxWidth: 448 }]}>
               <View style={styles.header}>
-                <Text style={styles.mobileBrand}>TalentScope AI</Text>
+                {!isLg && <Text style={styles.mobileBrand}>TalentScope AI</Text>}
                 <Text style={Typography.headlineLg}>Welcome back</Text>
                 <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant }]}>
                   Log in to your performance dashboard
@@ -190,8 +194,8 @@ const styles = StyleSheet.create({
   },
   skeletonWrap: { ...StyleSheet.absoluteFillObject, opacity: 0.4 },
   brandingBlock: {
-    maxWidth: 480,
-    padding: Spacing.lg
+    maxWidth: 576,
+    padding: Spacing.xl
   },
   brandTitle: {
     ...Typography.displayHero,
@@ -209,7 +213,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg
   },
   statLabel: { ...Typography.labelCaps, color: Colors.secondaryContainer },
-  statValue: { fontFamily: 'Geist_600SemiBold', fontSize: 24, fontWeight: '700', color: '#ffffff', marginTop: 2 },
+  statValue: { ...Typography.headlineMd, color: '#ffffff', marginTop: 2 },
   verticalDivider: { width: 1, height: 48, backgroundColor: 'rgba(255,255,255,0.2)' },
   formPanel: {
     flex: 1,

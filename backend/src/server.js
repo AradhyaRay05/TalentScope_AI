@@ -30,11 +30,13 @@ const authRoutes = require('./routes/authRoutes');
 const athleteRoutes = require('./routes/athleteRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const coachRoutes = require('./routes/coachRoutes');
+const consultationRoutes = require('./routes/consultationRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/athletes', athleteRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/coaches', coachRoutes);
+app.use('/api/consultations', consultationRoutes);
 
 // Socket.io for Real-time Pose Validation & Live Feedback
 require('./sockets/liveAssessmentSocket')(io);

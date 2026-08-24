@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   Image,
   ScrollView,
   TouchableOpacity,
-  
+  Animated,
+  Easing,
+  useWindowDimensions,
   StyleSheet
 } from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
+import { CONTAINER_MAX } from '../../theme/useResponsive';
 
 const HERO_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBnymycV9YWbRrW5SvkuftYaeRke_TiuUq84zQsa-ZXbca4rWGWwe7fjiiOKQti7cT9Guco6ETSBsIjh-ttRGzr4BHr43CRQtgE5C0zO7LQB3qIptAEGrMKNSfFNop_1aQwuiMTAY3b6Svy3jICOPUSPHioCmRI4x5U_ERdXBKwtt444ao1bMJPcv_VW-0b3DVb8nVXaIhJen9ZCRqNVaAWfhmRwr7DTajHLouujNQp2eNOp8G9kTasKkt7zOODt4pu7GUqQ8UA5ik';
@@ -48,10 +51,10 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: '500k+', label: 'ASSESSMENTS RUN' },
-  { value: '12k+', label: 'PRO ATHLETES' },
-  { value: '85+', label: 'SPORT TYPES' },
-  { value: '40%', label: 'AVG INJURY REDUCTION' }
+  { value: '500k+', label: 'Assessments Run' },
+  { value: '12k+', label: 'Pro Athletes' },
+  { value: '85+', label: 'Sport Types' },
+  { value: '40%', label: 'Avg Injury Reduction' }
 ];
 
 const COACHES = [
@@ -82,13 +85,66 @@ const FAQS = [
   }
 ];
 
+const NAV_LINKS = [
+  { label: 'About', key: 'about' },
+  { label: 'Features', key: 'features' },
+  { label: 'Plans', key: 'plans' },
+  { label: 'Developers', key: 'developers' }
+] as const;
+
 export default function LandingScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
+  const padH = isMd ? Spacing.marginDesktop : Spacing.marginMobile;
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const secY = useRef<Record<string, number>>({});
+
+  const track = (key: string) => (e: any) => {
+    secY.current[key] = e.nativeEvent.layout.y;
+  };
+  const goTo = (key: string) => {
+    scrollRef.current?.scrollTo({ y: Math.max((secY.current[key] ?? 0) - 64, 0), animated: true });
+  };
+
+  const grid = (nodes: React.ReactNode[], cols: number, gap: number) => {
+    if (cols <= 1) return <View style={{ gap }}>{nodes}</View>;
+    const rows: React.ReactNode[][] = [];
+    for (let i = 0; i < nodes.length; i += cols) rows.push(nodes.slice(i, i + cols));
+    return (
+      <View>
+        {rows.map((row, ri) => (
+          <View
+            key={ri}
+            style={{ flexDirection: 'row', gap, marginBottom: ri < rows.length - 1 ? gap : 0 }}
+          >
+            {row.map((node, ci) => (
+              <View key={ci} style={{ flex: 1 }}>
+                {node}
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const container = { alignSelf: 'center' as const, width: '100%' as const, maxWidth: CONTAINER_MAX };
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: padH }]}>
         <Text style={styles.brand}>TalentScope AI</Text>
+        {isMd && (
+          <View style={styles.headerNav}>
+            {NAV_LINKS.map(l => (
+              <TouchableOpacity key={l.key} onPress={() => goTo(l.key)}>
+                <Text style={styles.headerNavLink}>{l.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <TouchableOpacity
           style={styles.loginBtn}
           activeOpacity={0.85}
@@ -98,284 +154,365 @@ export default function LandingScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 96 }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: isLg ? 0 : 96 }} showsVerticalScrollIndicator={false}>
         {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>AI-DRIVEN PERFORMANCE</Text>
+        <View style={[styles.hero, { paddingHorizontal: padH }, isLg && styles.heroLg]} onLayout={track('hero')}>
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <View style={styles.glowTr} />
+            <View style={styles.glowTrInner} />
+            <View style={styles.glowBl} />
+            <View style={styles.glowBlInner} />
           </View>
-          <Text style={[styles.heroTitle, { marginTop: Spacing.md }]}>
-            AI-Powered Sports Assessment for Every Athlete
-          </Text>
-          <Text style={styles.heroBody}>
-            Analyze performance, detect injury risks, improve technique, and connect with certified
-            coaches using just your smartphone.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.lg }}>
-            <TouchableOpacity
-              style={styles.primaryCta}
-              activeOpacity={0.9}
-              onPress={() => navigation.navigate('Signup')}
-            >
-              <Text style={styles.primaryCtaText}>Start Assessment</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.outlineCta} activeOpacity={0.8}>
-              <Icon name="play-circle" size={20} color={Colors.primary} />
-              <Text style={styles.outlineCtaText}>Watch Demo</Text>
-            </TouchableOpacity>
-          </View>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <View style={isLg ? { flexDirection: 'row', alignItems: 'center', gap: Spacing.xl } : undefined}>
+              <View style={isLg ? { flex: 1 } : undefined}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>AI-DRIVEN PERFORMANCE</Text>
+                </View>
+                <Text style={[styles.heroTitle, { marginTop: Spacing.md }]}>
+                  AI-Powered Sports Assessment for Every Athlete
+                </Text>
+                <Text style={[styles.heroBody, isLg && { maxWidth: 512 }]}>
+                  Analyze performance, detect injury risks, improve technique, and connect with
+                  certified coaches using just your smartphone.
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.lg }}>
+                  <TouchableOpacity
+                    style={styles.primaryCta}
+                    activeOpacity={0.9}
+                    onPress={() => navigation.navigate('Signup')}
+                  >
+                    <Text style={styles.primaryCtaText}>Start Assessment</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.outlineCta} activeOpacity={0.8}>
+                    <Icon name="play-circle" size={24} color={Colors.primary} />
+                    <Text style={styles.outlineCtaText}>Watch Demo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-          <View style={styles.visionCard}>
-            <Image source={{ uri: HERO_IMG }} style={styles.visionImage} />
-            <SkeletonMock />
-            <View style={styles.visionTopRow}>
-              <View style={styles.glassChip}>
-                <Text style={styles.chipLabelSecondary}>JOINT ANGLES</Text>
-                <Text style={styles.monoData}>KNEE: 142°</Text>
-                <Text style={styles.monoData}>HIP: 168°</Text>
-              </View>
-              <View style={[styles.glassChip, { alignItems: 'flex-end' }]}>
-                <Text style={styles.chipLabelError}>STRESS ALERT</Text>
-                <Text style={styles.monoData}>L-ANKLE: HIGH</Text>
-              </View>
-            </View>
-            <View style={styles.liveAnalysisCard}>
-              <View style={styles.spinner} />
-              <View>
-                <Text style={styles.liveLabel}>LIVE ANALYSIS</Text>
-                <Text style={styles.liveValue}>98.4% Precision Tracking</Text>
+              <View style={isLg ? { flex: 1 } : { marginTop: Spacing.xl }}>
+                <View style={[styles.visionCard, { height: isLg ? 600 : 500 }]}>
+                  <Image source={{ uri: HERO_IMG }} style={styles.visionImage} />
+                  <SkeletonMock />
+                  <View style={styles.visionTopRow}>
+                    <View style={styles.glassChip}>
+                      <Text style={styles.chipLabelSecondary}>JOINT ANGLES</Text>
+                      <Text style={styles.monoData}>KNEE: 142°</Text>
+                      <Text style={styles.monoData}>HIP: 168°</Text>
+                    </View>
+                    <View style={[styles.glassChip, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.chipLabelError}>STRESS ALERT</Text>
+                      <Text style={styles.monoData}>L-ANKLE: HIGH</Text>
+                    </View>
+                  </View>
+                  <View style={styles.liveAnalysisCard}>
+                    <SpinSpinner />
+                    <View>
+                      <Text style={styles.liveLabel}>LIVE ANALYSIS</Text>
+                      <Text style={styles.liveValue}>98.4% Precision Tracking</Text>
+                    </View>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
         {/* Bento Pillars */}
-        <View style={styles.sectionLow}>
-          <View style={styles.pillarsRow}>
-            <View style={styles.pillarCard}>
-              <Icon name="biotech" size={40} color={Colors.secondary} />
-              <Text style={styles.pillarTitle}>AI Biomechanics</Text>
-              <Text style={styles.pillarBody}>
-                Proprietary vision models dissect movement with sub-millimeter accuracy for elite optimization.
-              </Text>
-            </View>
-            <View style={[styles.pillarCard, { backgroundColor: Colors.secondary }]}>
-              <Icon name="health-and-safety" size={40} color="#ffffff" />
-              <Text style={[styles.pillarTitle, { color: '#ffffff' }]}>Injury Risk Detection</Text>
-              <Text style={[styles.pillarBody, { color: 'rgba(255,255,255,0.9)' }]}>
-                Identify asymmetrical loads and joint fatigue before they become career-ending injuries.
-              </Text>
-            </View>
-            <View style={styles.pillarCard}>
-              <Icon name="hub" size={40} color={Colors.secondary} />
-              <Text style={styles.pillarTitle}>Certified Network</Text>
-              <Text style={styles.pillarBody}>
-                Instant connection to world-class sports scientists and Olympic-level coaches.
-              </Text>
-            </View>
+        <View style={[styles.sectionLow, { paddingHorizontal: padH }]} onLayout={track('about')}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            {grid(
+              [
+                <View key="p1" style={styles.pillarCard}>
+                  <Icon name="biotech" size={40} color={Colors.secondary} />
+                  <Text style={styles.pillarTitle}>AI Biomechanics</Text>
+                  <Text style={styles.pillarBody}>
+                    Proprietary vision models dissect movement with sub-millimeter accuracy for elite optimization.
+                  </Text>
+                </View>,
+                <View key="p2" style={[styles.pillarCard, { backgroundColor: Colors.secondary }]}>
+                  <Icon name="health-and-safety" size={40} color="#ffffff" />
+                  <Text style={[styles.pillarTitle, { color: '#ffffff' }]}>Injury Risk Detection</Text>
+                  <Text style={[styles.pillarBody, { color: 'rgba(255,255,255,0.9)' }]}>
+                    Identify asymmetrical loads and joint fatigue before they become career-ending injuries.
+                  </Text>
+                </View>,
+                <View key="p3" style={styles.pillarCard}>
+                  <Icon name="hub" size={40} color={Colors.secondary} />
+                  <Text style={styles.pillarTitle}>Certified Network</Text>
+                  <Text style={styles.pillarBody}>
+                    Instant connection to world-class sports scientists and Olympic-level coaches.
+                  </Text>
+                </View>
+              ],
+              isMd ? 3 : 1,
+              Spacing.gutter
+            )}
           </View>
         </View>
 
         {/* Features */}
-        <View style={styles.section}>
-          <Text style={[Typography.headlineLg, styles.sectionTitleCenter]}>
-            Precision Performance Features
-          </Text>
-          <Text style={[Typography.bodyLg, styles.sectionSubCenter]}>
-            The future of athletic training is in your pocket.
-          </Text>
-          <View style={styles.featuresGrid}>
-            {FEATURES.map(f => (
-              <View key={f.title} style={styles.featureCard}>
-                <Icon name={f.icon} size={24} color={Colors.secondary} />
-                <Text style={styles.featureTitle}>{f.title}</Text>
-                <Text style={styles.featureBody}>{f.text}</Text>
-              </View>
-            ))}
+        <View style={[styles.section, { paddingHorizontal: padH }]} onLayout={track('features')}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <Text style={[Typography.headlineLg, styles.sectionTitleCenter]}>
+              Precision Performance Features
+            </Text>
+            <Text style={[Typography.bodyLg, styles.sectionSubCenter]}>
+              The future of athletic training is in your pocket.
+            </Text>
+            {grid(
+              FEATURES.map(f => (
+                <View key={f.title} style={styles.featureCard}>
+                  <Icon name={f.icon} size={24} color={Colors.secondary} />
+                  <Text style={styles.featureTitle}>{f.title}</Text>
+                  <Text style={styles.featureBody}>{f.text}</Text>
+                </View>
+              )),
+              width >= 1024 ? 4 : 2,
+              Spacing.md
+            )}
           </View>
         </View>
 
         {/* How It Works */}
-        <View style={styles.howSection}>
-          <Text style={[Typography.headlineLg, { color: '#ffffff', textAlign: 'center', marginBottom: Spacing.lg }]}>
-            Engineered for Simplicity
-          </Text>
-          {STEPS.map(s => (
-            <View key={s.num} style={styles.stepRow}>
-              <Text style={styles.stepNum}>{s.num}</Text>
-              <Text style={styles.stepTitle}>{s.title}</Text>
-              <Text style={styles.stepBody}>{s.text}</Text>
-            </View>
-          ))}
+        <View style={[styles.howSection, { paddingHorizontal: padH }]}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <Text style={[Typography.headlineLg, { color: '#ffffff', textAlign: 'center', marginBottom: Spacing.xl }]}>
+              Engineered for Simplicity
+            </Text>
+            {grid(
+              STEPS.map(s => (
+                <View key={s.num} style={styles.stepRow}>
+                  <Text style={styles.stepNum}>{s.num}</Text>
+                  <Text style={styles.stepTitle}>{s.title}</Text>
+                  <Text style={styles.stepBody}>{s.text}</Text>
+                </View>
+              )),
+              isLg ? 3 : isMd ? 2 : 1,
+              Spacing.xl
+            )}
+          </View>
         </View>
 
         {/* Stats */}
-        <View style={styles.statsRow}>
-          {STATS.map(s => (
-            <View key={s.label} style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
+        <View style={[styles.statsSection, { paddingHorizontal: padH }]}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            {grid(
+              STATS.map(s => (
+                <View key={s.label} style={{ alignItems: 'center' }}>
+                  <Text style={styles.statValue}>{s.value}</Text>
+                  <Text style={styles.statLabel}>{s.label}</Text>
+                </View>
+              )),
+              isLg ? 4 : 2,
+              Spacing.md
+            )}
+          </View>
         </View>
 
         {/* Marketplace Preview */}
-        <View style={styles.marketSection}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: Spacing.lg }}>
-            <View style={{ flex: 1, paddingRight: Spacing.sm }}>
-              <Text style={Typography.headlineLg}>Elite Coach Marketplace</Text>
-              <Text style={[Typography.bodyLg, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>
-                Work with professionals who use AI to tailor your training.
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('MainTabs', { screen: 'Explore' })}
-              style={styles.viewCoachesBtn}
-              activeOpacity={0.85}
+        <View style={[styles.marketSection, { paddingHorizontal: padH }]}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <View
+              style={
+                isMd
+                  ? { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: Spacing.xl, gap: Spacing.md }
+                  : { flexDirection: 'column', alignItems: 'flex-end', marginBottom: Spacing.xl, gap: Spacing.md }
+              }
             >
-              <Text style={styles.viewCoachesText}>View All Coaches</Text>
-            </TouchableOpacity>
-          </View>
-          {COACHES.map(c => (
-            <View key={c.name} style={styles.coachCard}>
-              <View>
-                <Image source={{ uri: c.img }} style={styles.coachImg} />
-                <View style={styles.verifiedPill}>
-                  <Text style={styles.verifiedText}>VERIFIED</Text>
-                </View>
+              <View style={isMd ? undefined : { alignSelf: 'stretch' }}>
+                <Text style={[Typography.headlineLg, { color: Colors.onSurface }]}>Elite Coach Marketplace</Text>
+                <Text style={[Typography.bodyLg, { color: Colors.onSurfaceVariant }]}>
+                  Work with professionals who use AI to tailor your training.
+                </Text>
               </View>
-              <View style={{ padding: Spacing.md }}>
-                <Text style={styles.coachName}>{c.name}</Text>
-                <Text style={styles.coachRole}>{c.role}</Text>
-                <View style={styles.divider} />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.coachPrice}>$75/Assessment</Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('CoachProfile')}>
-                    <Text style={styles.bookLink}>Book Consultation</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Explore' })}
+                style={styles.viewCoachesBtn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.viewCoachesText}>View All Coaches</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+            {grid(
+              COACHES.map(c => (
+                <View key={c.name} style={styles.coachCard}>
+                  <View>
+                    <Image source={{ uri: c.img }} style={styles.coachImg} />
+                    <View style={styles.verifiedPill}>
+                      <Text style={styles.verifiedText}>VERIFIED</Text>
+                    </View>
+                  </View>
+                  <View style={{ padding: Spacing.md }}>
+                    <Text style={styles.coachName}>{c.name}</Text>
+                    <Text style={styles.coachRole}>{c.role}</Text>
+                    <View style={styles.divider} />
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.coachPrice}>$75/Assessment</Text>
+                      <TouchableOpacity onPress={() => navigation.navigate('CoachProfile')}>
+                        <Text style={styles.bookLink}>Book Consultation</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )),
+              isMd ? 3 : 1,
+              Spacing.gutter
+            )}
+          </View>
         </View>
 
         {/* Pricing */}
-        <View style={styles.section}>
-          <Text style={[Typography.headlineLg, styles.sectionTitleCenter, { marginBottom: Spacing.lg }]}>
-            Choose Your Tier
-          </Text>
-          <View style={{ gap: Spacing.gutter }}>
-            <View style={styles.tierCard}>
-              <Text style={styles.tierLabel}>BASIC</Text>
-              <Text style={styles.tierPrice}>Free</Text>
-              <TierFeature text="3 Assessments/Mo" included />
-              <TierFeature text="Basic Form Scoring" included />
-              <TierFeature text="Injury Risk Reports" included={false} />
-              <TouchableOpacity style={styles.tierOutlineBtn} onPress={() => navigation.navigate('Signup')}>
-                <Text style={styles.tierOutlineText}>Get Started</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.tierProCard}>
-              <View style={styles.popularPill}>
-                <Text style={styles.popularText}>MOST POPULAR</Text>
-              </View>
-              <Text style={styles.tierLabelDark}>ELITE</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.md }}>
-                <Text style={styles.tierPriceDark}>$29</Text>
-                <Text style={styles.tierPerMo}>/mo</Text>
-              </View>
-              <TierFeature dark text="Unlimited Assessments" included />
-              <TierFeature dark text="Advanced Injury Analytics" included />
-              <TierFeature dark text="Full Marketplace Access" included />
-              <TouchableOpacity style={styles.proUnlockBtn} onPress={() => navigation.navigate('Signup')}>
-                <Text style={styles.proUnlockText}>Unlock Pro</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.tierCard}>
-              <Text style={styles.tierLabel}>TEAM</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.md }}>
-                <Text style={styles.tierPrice}>$199</Text>
-                <Text style={styles.tierPerMoLight}>/mo</Text>
-              </View>
-              <TierFeature text="Up to 20 Athletes" included />
-              <TierFeature text="Dedicated Dashboards" included />
-              <TierFeature text="API Data Export" included />
-              <TouchableOpacity style={styles.tierOutlineBtn}>
-                <Text style={styles.tierOutlineText}>Contact Sales</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={[styles.section, { paddingHorizontal: padH }]} onLayout={track('plans')}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <Text style={[Typography.headlineLg, styles.sectionTitleCenter, { marginBottom: Spacing.xl }]}>
+              Choose Your Tier
+            </Text>
+            {grid(
+              [
+                <View key="free" style={styles.tierCard}>
+                  <Text style={styles.tierLabel}>BASIC</Text>
+                  <Text style={styles.tierPrice}>Free</Text>
+                  <View style={styles.tierFeatures}>
+                    <TierFeature text="3 Assessments/Mo" included />
+                    <TierFeature text="Basic Form Scoring" included />
+                    <TierFeature text="Injury Risk Reports" included={false} />
+                  </View>
+                  <TouchableOpacity style={styles.tierOutlineBtn} onPress={() => navigation.navigate('Signup')}>
+                    <Text style={styles.tierOutlineText}>Get Started</Text>
+                  </TouchableOpacity>
+                </View>,
+                <View key="pro" style={[styles.tierProCard, isMd && { transform: [{ scale: 1.05 }] }]}>
+                  <View style={styles.popularPill}>
+                    <Text style={styles.popularText}>MOST POPULAR</Text>
+                  </View>
+                  <Text style={styles.tierLabelDark}>ELITE</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.md }}>
+                    <Text style={styles.tierPriceDark}>$29</Text>
+                    <Text style={styles.tierPerMo}>/mo</Text>
+                  </View>
+                  <View style={styles.tierFeatures}>
+                    <TierFeature dark text="Unlimited Assessments" included />
+                    <TierFeature dark text="Advanced Injury Analytics" included />
+                    <TierFeature dark text="Full Marketplace Access" included />
+                  </View>
+                  <TouchableOpacity style={styles.proUnlockBtn} onPress={() => navigation.navigate('Signup')}>
+                    <Text style={styles.proUnlockText}>Unlock Pro</Text>
+                  </TouchableOpacity>
+                </View>,
+                <View key="team" style={styles.tierCard}>
+                  <Text style={styles.tierLabel}>TEAM</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.md }}>
+                    <Text style={styles.tierPrice}>$199</Text>
+                    <Text style={styles.tierPerMoLight}>/mo</Text>
+                  </View>
+                  <View style={styles.tierFeatures}>
+                    <TierFeature text="Up to 20 Athletes" included />
+                    <TierFeature text="Dedicated Dashboards" included />
+                    <TierFeature text="API Data Export" included />
+                  </View>
+                  <TouchableOpacity style={styles.tierOutlineBtn}>
+                    <Text style={styles.tierOutlineText}>Contact Sales</Text>
+                  </TouchableOpacity>
+                </View>
+              ],
+              isMd ? 3 : 1,
+              Spacing.gutter
+            )}
           </View>
         </View>
 
         {/* Developers */}
-        <View style={styles.sectionLow}>
-          <Text style={[Typography.headlineLg, styles.sectionTitleCenter]}>
-            Developers Behind It
-          </Text>
-          <Text style={[Typography.bodyLg, styles.sectionSubCenter]}>
-            The minds engineering the future of athletic intelligence.
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md }}>
-            {DEVS.map(d => (
-              <View key={d.name} style={styles.devCard}>
-                <Image source={{ uri: d.img }} style={styles.devImg} />
-                <Text style={styles.devName}>{d.name}</Text>
-                <Text style={styles.devRole}>{d.role}</Text>
-                <Text style={styles.devField}>{d.field}</Text>
+        <View style={[styles.sectionLow, { paddingHorizontal: padH }]} onLayout={track('developers')}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <Text style={[Typography.headlineLg, styles.sectionTitleCenter]}>
+              Developers Behind It
+            </Text>
+            <Text style={[Typography.bodyLg, styles.sectionSubCenter]}>
+              The minds engineering the future of athletic intelligence.
+            </Text>
+            {grid(
+              DEVS.map(d => (
+                <View key={d.name} style={styles.devCard}>
+                  <View style={styles.devImgWrap}>
+                    <Image source={{ uri: d.img }} style={styles.devImg} />
+                  </View>
+                  <Text style={styles.devName}>{d.name}</Text>
+                  <Text style={styles.devRole}>{d.role}</Text>
+                  <Text style={styles.devField}>{d.field}</Text>
+                </View>
+              )),
+              isMd ? (isLg ? 4 : 2) : 1,
+              Spacing.md
+            )}
+          </View>
+        </View>
+
+        {/* FAQ */}
+        <View style={[styles.section, { paddingHorizontal: padH }]}>
+          <View style={[container, { paddingVertical: Spacing.xl, maxWidth: 768 }]}>
+            <Text style={[Typography.headlineLg, styles.sectionTitleCenter, { marginBottom: Spacing.xl }]}>
+              Common Questions
+            </Text>
+            {FAQS.map((f, i) => (
+              <View key={f.q} style={styles.faqItem}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                  onPress={() => setOpenFaq(openFaq === i ? null : i)}
+                >
+                  <Text style={styles.faqQuestion}>{f.q}</Text>
+                  <Icon
+                    name="expand-more"
+                    size={24}
+                    color={Colors.onSurface}
+                    style={{ transform: [{ rotate: openFaq === i ? '180deg' : '0deg' }] }}
+                  />
+                </TouchableOpacity>
+                {openFaq === i && <Text style={styles.faqAnswer}>{f.a}</Text>}
               </View>
             ))}
           </View>
         </View>
 
-        {/* FAQ */}
-        <View style={styles.section}>
-          <Text style={[Typography.headlineLg, styles.sectionTitleCenter, { marginBottom: Spacing.lg }]}>
-            Common Questions
-          </Text>
-          {FAQS.map((f, i) => (
-            <View key={f.q} style={styles.faqItem}>
-              <TouchableOpacity
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-                onPress={() => setOpenFaq(openFaq === i ? null : i)}
-              >
-                <Text style={styles.faqQuestion}>{f.q}</Text>
-                <Icon
-                  name="expand-more"
-                  size={22}
-                  color={Colors.onSurface}
-                  style={{ transform: [{ rotate: openFaq === i ? '180deg' : '0deg' }] }}
-                />
-              </TouchableOpacity>
-              {openFaq === i && <Text style={styles.faqAnswer}>{f.a}</Text>}
-            </View>
-          ))}
-        </View>
-
         {/* Final CTA */}
-        <View style={styles.ctaSection}>
-          <View style={styles.ctaPanel}>
-            <Text style={[Typography.displayHero, { fontSize: 34, textAlign: 'center', marginBottom: Spacing.md }]}>
-              Start Your AI Sports Journey Today
-            </Text>
-            <Text style={[Typography.bodyLg, { color: Colors.onSurfaceVariant, textAlign: 'center' }]}>
-              Join thousands of athletes who are already using TalentScope to gain a competitive edge and train smarter.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: Spacing.md, justifyContent: 'center', marginTop: Spacing.lg }}>
-              <TouchableOpacity style={styles.primaryCta} onPress={() => navigation.navigate('Signup')}>
-                <Text style={styles.primaryCtaText}>Get Started Free</Text>
-              </TouchableOpacity>
-              <View style={styles.enterpriseBtn}>
-                <Text style={styles.enterpriseText}>Request Enterprise Demo</Text>
+        <View style={[styles.ctaSection, { paddingHorizontal: padH }]}>
+          <View style={[container, { paddingVertical: Spacing.xl }]}>
+            <View style={styles.ctaPanel}>
+              <Text style={[Typography.displayHero, { color: Colors.onSurface, textAlign: 'center', marginBottom: Spacing.md }]}>
+                Start Your AI Sports Journey Today
+              </Text>
+              <Text style={[Typography.bodyLg, { color: Colors.onSurfaceVariant, textAlign: 'center', maxWidth: 672, alignSelf: 'center' }]}>
+                Join thousands of athletes who are already using TalentScope to gain a competitive edge and train smarter.
+              </Text>
+              <View
+                style={
+                  isMd
+                    ? { flexDirection: 'row', gap: Spacing.md, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.lg }
+                    : { flexDirection: 'column', gap: Spacing.md, marginTop: Spacing.lg }
+                }
+              >
+                <TouchableOpacity
+                  style={[styles.ctaPrimaryBtn, !isMd && { width: '100%' }]}
+                  onPress={() => navigation.navigate('Signup')}
+                >
+                  <Text style={styles.ctaBtnText}>Get Started Free</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.enterpriseBtn, !isMd && { width: '100%' }]}>
+                  <Text style={styles.enterpriseText}>Request Enterprise Demo</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
         </View>
 
         {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerBrand}>TalentScope AI</Text>
-          <Text style={styles.footerCopy}>© 2024 TalentScope AI. Professional Grade Performance Analysis.</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.md, marginTop: Spacing.base }}>
+        <View style={[styles.footer, { paddingHorizontal: padH }, isMd && { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+          <View style={[styles.footerBrandCol, isMd && { alignItems: 'flex-start' }]}>
+            <Text style={styles.footerBrand}>TalentScope AI</Text>
+            <Text style={styles.footerCopy}>© 2024 TalentScope AI. Professional Grade Performance Analysis.</Text>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.md }}>
             {['Privacy Policy', 'Terms of Service', 'AI Ethics', 'Contact Support'].map(l => (
               <Text key={l} style={styles.footerLink}>{l}</Text>
             ))}
@@ -383,21 +520,38 @@ export default function LandingScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Mobile Bottom Nav */}
-      <View style={styles.bottomNav}>
-        <BottomNavItem icon="home" label="Home" active />
-        <BottomNavItem icon="bolt" label="Features" />
-        <BottomNavItem icon="payments" label="Plans" />
-        <BottomNavItem icon="code" label="Devs" />
-        <BottomNavItem icon="person" label="Login" onPress={() => navigation.navigate('Login')} />
-      </View>
+      {!isLg && (
+        <View style={styles.bottomNav}>
+          <BottomNavItem icon="home" label="Home" active onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
+          <BottomNavItem icon="bolt" label="Features" onPress={() => goTo('features')} />
+          <BottomNavItem icon="payments" label="Plans" onPress={() => goTo('plans')} />
+          <BottomNavItem icon="code" label="Devs" onPress={() => goTo('developers')} />
+          <BottomNavItem icon="person" label="Login" onPress={() => navigation.navigate('Login')} />
+        </View>
+      )}
     </View>
+  );
+}
+
+function SpinSpinner() {
+  const rot = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(rot, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [rot]);
+  return (
+    <Animated.View
+      style={[styles.spinner, { transform: [{ rotate: rot.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }]}
+    />
   );
 }
 
 function TierFeature({ text, included, dark }: { text: string; included: boolean; dark?: boolean }) {
   return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.sm }, !included && { opacity: 0.5 }]}>
+    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }, !included && { opacity: 0.5 }]}>
       <Icon
         name={included ? 'check' : 'close'}
         size={18}
@@ -433,7 +587,7 @@ function BottomNavItem({
 }) {
   return (
     <TouchableOpacity style={styles.bottomNavItem} onPress={onPress} disabled={!onPress}>
-      <Icon name={icon} size={22} color={active ? Colors.secondary : Colors.onSurfaceVariant} />
+      <Icon name={icon} size={24} color={active ? Colors.secondary : Colors.onSurfaceVariant} />
       <Text style={[styles.bottomNavLabel, active && { color: Colors.secondary }]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -446,14 +600,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.marginMobile,
     backgroundColor: 'rgba(247,249,251,0.92)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(198,198,205,0.15)'
+    borderBottomColor: 'rgba(198,198,205,0.15)',
+    zIndex: 50
   },
+  headerNav: { flexDirection: 'row', gap: Spacing.md },
+  headerNavLink: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
   brand: {
     ...Typography.headlineMd,
-    letterSpacing: -0.8,
+    letterSpacing: -1.2,
     color: Colors.primary
   },
   loginBtn: {
@@ -464,9 +620,45 @@ const styles = StyleSheet.create({
   },
   loginBtnText: { ...Typography.labelCaps, color: Colors.onPrimary },
   hero: {
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl,
-    backgroundColor: Colors.surface
+    backgroundColor: Colors.surface,
+    overflow: 'hidden'
+  },
+  heroLg: { minHeight: 921, justifyContent: 'center' },
+  glowTr: {
+    position: 'absolute',
+    top: -120,
+    right: -120,
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    backgroundColor: 'rgba(87,223,254,0.08)'
+  },
+  glowTrInner: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(87,223,254,0.12)'
+  },
+  glowBl: {
+    position: 'absolute',
+    bottom: -140,
+    left: -140,
+    width: 440,
+    height: 440,
+    borderRadius: 220,
+    backgroundColor: 'rgba(0,104,122,0.04)'
+  },
+  glowBlInner: {
+    position: 'absolute',
+    bottom: -60,
+    left: -60,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(0,104,122,0.05)'
   },
   badge: {
     alignSelf: 'flex-start',
@@ -478,9 +670,8 @@ const styles = StyleSheet.create({
   badgeText: { ...Typography.labelCaps, color: Colors.onSecondaryContainer },
   heroTitle: {
     ...Typography.displayHero,
-    fontSize: 40,
-    lineHeight: 46,
-    maxWidth: 520
+    color: Colors.onSurface,
+    maxWidth: 576
   },
   heroBody: {
     ...Typography.bodyLg,
@@ -488,33 +679,27 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md
   },
   primaryCta: {
-    flex: 1,
     backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
     borderRadius: 12,
     alignItems: 'center',
-    minHeight: 56,
     justifyContent: 'center'
   },
-  primaryCtaText: { ...Typography.headlineMd, fontSize: 20, color: Colors.onPrimary, lineHeight: 26 },
+  primaryCtaText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24, color: Colors.onPrimary, textAlign: 'center' },
   outlineCta: {
-    flex: 1,
     borderWidth: 2,
     borderColor: Colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm,
-    minHeight: 56
+    gap: Spacing.sm
   },
-  outlineCtaText: { ...Typography.headlineMd, fontSize: 20, color: Colors.primary, lineHeight: 26 },
+  outlineCtaText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24, color: Colors.primary },
   visionCard: {
-    marginTop: Spacing.xl,
-    height: 420,
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#dfe3ea',
@@ -528,7 +713,7 @@ const styles = StyleSheet.create({
   },
   visionImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.35
+    opacity: 0.3
   },
   visionTopRow: {
     position: 'absolute',
@@ -545,16 +730,14 @@ const styles = StyleSheet.create({
   },
   chipLabelSecondary: {
     ...Typography.labelCaps,
-    color: Colors.secondary,
-    marginBottom: 4
+    color: Colors.secondary
   },
   chipLabelError: {
     ...Typography.labelCaps,
-    color: Colors.error,
-    marginBottom: 4
+    color: Colors.error
   },
-  monoData: { ...Typography.monoData, color: Colors.onSurface, lineHeight: 18 },
-  skeletonArea: { ...StyleSheet.absoluteFillObject, top: 120, bottom: 140 },
+  monoData: { ...Typography.monoData, color: Colors.onSurface },
+  skeletonArea: { ...StyleSheet.absoluteFillObject, top: 150, bottom: 160 },
   skDot: {
     position: 'absolute',
     width: 4,
@@ -583,28 +766,23 @@ const styles = StyleSheet.create({
     gap: Spacing.md
   },
   spinner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 4,
     borderColor: Colors.secondary,
     borderTopColor: 'transparent'
   },
   liveLabel: { ...Typography.labelCaps },
-  liveValue: { fontFamily: 'Inter_600SemiBold', fontSize: 16, color: Colors.onSurface },
+  liveValue: { fontFamily: 'Inter_600SemiBold', fontSize: 16, lineHeight: 24, fontWeight: '600', color: Colors.onSurface },
   sectionLow: {
-    backgroundColor: Colors.surfaceContainerLow,
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl
+    backgroundColor: Colors.surfaceContainerLow
   },
   section: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl
+    backgroundColor: Colors.surface
   },
-  sectionTitleCenter: { textAlign: 'center', marginBottom: Spacing.base },
+  sectionTitleCenter: { textAlign: 'center', marginBottom: Spacing.base, color: Colors.onSurface },
   sectionSubCenter: { textAlign: 'center', color: Colors.onSurfaceVariant, marginBottom: Spacing.lg },
-  pillarsRow: { flexDirection: 'column', gap: Spacing.gutter },
   pillarCard: {
     backgroundColor: Glass.backgroundColor,
     borderWidth: 1,
@@ -615,61 +793,46 @@ const styles = StyleSheet.create({
   },
   pillarTitle: { ...Typography.headlineMd, color: Colors.onSurface },
   pillarBody: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
-  featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md
-  },
   featureCard: {
-    width: '47%',
-    flexGrow: 1,
     borderWidth: 1,
     borderColor: 'rgba(198,198,205,0.35)',
     borderRadius: 16,
     padding: Spacing.md
   },
   featureTitle: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 17,
+    fontFamily: 'Geist_700Bold',
+    fontSize: 18,
+    lineHeight: 29,
+    fontWeight: '700',
     color: Colors.onSurface,
-    marginVertical: Spacing.xs
+    marginBottom: Spacing.xs
   },
-  featureBody: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, fontSize: 14 },
+  featureBody: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
   howSection: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl
+    backgroundColor: Colors.primary
   },
   stepRow: {
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(124,131,155,0.3)',
     paddingLeft: Spacing.md,
-    paddingTop: Spacing.base,
     paddingBottom: Spacing.base
   },
   stepNum: {
     ...Typography.displayHero,
-    fontSize: 40,
     color: 'rgba(255,255,255,0.1)',
     position: 'absolute',
-    left: 8,
-    top: -6
+    left: -16,
+    top: -24
   },
   stepTitle: { ...Typography.headlineMd, color: '#ffffff', marginBottom: Spacing.xs },
   stepBody: { ...Typography.bodyMd, color: Colors.onPrimaryContainer, zIndex: 1 },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl,
-    backgroundColor: Colors.surface,
-    gap: Spacing.sm
+  statsSection: {
+    backgroundColor: Colors.surface
   },
-  statValue: { ...Typography.displayHero, fontSize: 30, lineHeight: 36, color: Colors.secondary },
-  statLabel: { ...Typography.labelCaps, fontSize: 9, textAlign: 'center', marginTop: 4, color: Colors.onSurface },
+  statValue: { ...Typography.displayHero, color: Colors.secondary, textAlign: 'center' },
+  statLabel: { ...Typography.labelCaps, textAlign: 'center', marginTop: Spacing.xs, color: Colors.onSurface },
   marketSection: {
-    backgroundColor: Colors.surfaceContainerHighest,
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl
+    backgroundColor: Colors.surfaceContainerHighest
   },
   viewCoachesBtn: {
     backgroundColor: Colors.secondary,
@@ -682,14 +845,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: 16,
     overflow: 'hidden',
-    marginBottom: Spacing.gutter,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 3
   },
-  coachImg: { width: '100%', height: 200 },
+  coachImg: { width: '100%', height: 256 },
   verifiedPill: {
     position: 'absolute',
     top: 16,
@@ -699,19 +861,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999
   },
-  verifiedText: { ...Typography.labelCaps, fontSize: 10, color: Colors.secondary },
-  coachName: { fontFamily: 'Inter_700Bold', fontSize: 18, color: Colors.onSurface },
-  coachRole: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, marginTop: 2 },
+  verifiedText: { fontFamily: 'Geist_400Regular', fontSize: 10, lineHeight: 15, letterSpacing: 0, color: Colors.secondary },
+  coachName: { fontFamily: 'Geist_700Bold', fontSize: 18, lineHeight: 29, fontWeight: '700', color: Colors.onSurface },
+  coachRole: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
   divider: {
     borderTopWidth: 1,
     borderTopColor: 'rgba(198,198,205,0.2)',
     marginVertical: Spacing.sm
   },
-  coachPrice: { fontFamily: 'Inter_700Bold', color: Colors.secondary, fontWeight: '700' },
+  coachPrice: { fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 24, fontWeight: '700', color: Colors.secondary },
   bookLink: {
     ...Typography.labelCaps,
     color: Colors.primary,
-    textDecorationLine: 'underline'
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.primary,
+    paddingBottom: 2
   },
   tierCard: {
     borderWidth: 1,
@@ -721,7 +885,7 @@ const styles = StyleSheet.create({
   },
   tierLabel: { ...Typography.labelCaps, color: Colors.onSurfaceVariant, marginBottom: Spacing.xs },
   tierLabelDark: { ...Typography.labelCaps, color: 'rgba(255,255,255,0.7)', marginBottom: Spacing.xs },
-  tierPrice: { ...Typography.headlineLg, marginBottom: Spacing.md },
+  tierPrice: { ...Typography.headlineLg, color: Colors.onSurface, marginBottom: Spacing.md },
   tierPriceDark: { ...Typography.headlineLg, color: '#ffffff' },
   tierPerMo: { ...Typography.bodyMd, color: 'rgba(255,255,255,0.7)', marginLeft: 4 },
   tierPerMoLight: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, marginLeft: 4 },
@@ -729,6 +893,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderRadius: 24,
     padding: Spacing.lg,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.25,
@@ -744,27 +909,25 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     borderRadius: 999
   },
-  popularText: { ...Typography.labelCaps, fontSize: 10, color: Colors.onSecondaryContainer },
+  popularText: { fontFamily: 'Geist_400Regular', fontSize: 10, lineHeight: 15, letterSpacing: 0, color: Colors.onSecondaryContainer },
+  tierFeatures: { gap: Spacing.sm, marginBottom: Spacing.xl, flexGrow: 1 },
   tierOutlineBtn: {
     borderWidth: 2,
     borderColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    marginTop: Spacing.md
+    alignItems: 'center'
   },
-  tierOutlineText: { ...Typography.headlineMd, fontSize: 18, lineHeight: 24 },
+  tierOutlineText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24 },
   proUnlockBtn: {
     backgroundColor: Colors.secondary,
     borderRadius: 12,
     paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    marginTop: Spacing.md
+    alignItems: 'center'
   },
-  proUnlockText: { ...Typography.headlineMd, fontSize: 18, lineHeight: 24, color: Colors.onSecondary },
+  proUnlockText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24, color: Colors.onSecondary },
   devCard: {
-    width: '47%',
-    flexGrow: 1,
+    width: '100%',
     backgroundColor: Glass.backgroundColor,
     borderWidth: 1,
     borderColor: Glass.borderColor,
@@ -772,52 +935,68 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     alignItems: 'center'
   },
-  devImg: { width: 110, height: 110, borderRadius: 55, marginBottom: Spacing.md },
-  devName: { fontFamily: 'Inter_700Bold', fontSize: 17, color: Colors.onSurface, textAlign: 'center' },
-  devRole: { fontFamily: 'Inter_500Medium', fontSize: 14, color: Colors.secondary, textAlign: 'center', marginTop: 2 },
-  devField: { ...Typography.bodyMd, fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 4 },
+  devImgWrap: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    overflow: 'hidden',
+    marginBottom: Spacing.md,
+    borderWidth: 4,
+    borderColor: 'rgba(87,223,254,0.3)'
+  },
+  devImg: { width: '100%', height: '100%' },
+  devName: { fontFamily: 'Geist_700Bold', fontSize: 18, lineHeight: 29, fontWeight: '700', color: Colors.onSurface, textAlign: 'center' },
+  devRole: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 24, fontWeight: '500', color: Colors.secondary, textAlign: 'center' },
+  devField: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.xs },
   faqItem: {
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(198,198,205,0.35)',
     paddingBottom: Spacing.md,
     marginBottom: Spacing.md
   },
-  faqQuestion: { fontFamily: 'Geist_600SemiBold', fontSize: 17, fontWeight: '600', color: Colors.onSurface, flex: 1, paddingRight: 8 },
+  faqQuestion: { fontFamily: 'Geist_400Regular', fontSize: 18, lineHeight: 29, fontWeight: '400', color: Colors.onSurface, flex: 1, paddingRight: 8 },
   faqAnswer: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, marginTop: Spacing.sm },
   ctaSection: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    paddingHorizontal: Spacing.marginMobile,
-    paddingVertical: Spacing.xl
+    backgroundColor: Colors.surfaceContainerLowest
   },
   ctaPanel: {
     backgroundColor: Glass.backgroundColor,
     borderWidth: 1,
     borderColor: Glass.borderColor,
     borderRadius: 48,
-    padding: Spacing.xl > 48 ? 32 : 32
+    padding: Spacing.xl
   },
+  ctaPrimaryBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  ctaBtnText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24, color: Colors.onPrimary },
   enterpriseBtn: {
-    flex: 1,
     borderWidth: 1,
     borderColor: Colors.outline,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 56
+    justifyContent: 'center'
   },
-  enterpriseText: { ...Typography.headlineMd, fontSize: 18, lineHeight: 24 },
+  enterpriseText: { fontFamily: 'Geist_400Regular', fontSize: 16, lineHeight: 24, color: Colors.onSurface },
   footer: {
     alignItems: 'center',
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.marginMobile,
+    paddingVertical: Spacing.xl,
     borderTopWidth: 1,
     borderTopColor: 'rgba(198,198,205,0.2)',
-    backgroundColor: Colors.surfaceContainerLowest
+    backgroundColor: Colors.surfaceContainerLowest,
+    gap: Spacing.md
   },
+  footerBrandCol: { alignItems: 'center', gap: Spacing.xs },
   footerBrand: { ...Typography.headlineMd, color: Colors.primary },
-  footerCopy: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, marginTop: Spacing.xs, textAlign: 'center' },
-  footerLink: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, fontSize: 14 },
+  footerCopy: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  footerLink: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
   bottomNav: {
     position: 'absolute',
     bottom: 0,
@@ -834,5 +1013,5 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 12
   },
   bottomNavItem: { alignItems: 'center', justifyContent: 'center' },
-  bottomNavLabel: { ...Typography.labelCaps, fontSize: 10, marginTop: 2, color: Colors.onSurfaceVariant }
+  bottomNavLabel: { ...Typography.labelCaps, marginTop: 2, color: Colors.onSurfaceVariant }
 });

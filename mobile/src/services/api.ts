@@ -119,13 +119,33 @@ export const getLatestAssessment = async () => {
   return await apiRequest('/assessments/latest', 'GET');
 };
 
+const buildQuery = (params: Record<string, any>) => {
+  return Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join('&');
+};
+
 // Coach endpoints
 export const getCoaches = async (params: { search?: string; specialty?: string } = {}) => {
-  const query = new URLSearchParams(params as any).toString();
-  const endpoint = query ? `/coaches?${query}` : '/coaches';
-  return await apiRequest(endpoint, 'GET');
+  const query = buildQuery(params);
+  return await apiRequest(query ? `/coaches?${query}` : '/coaches', 'GET');
 };
 
 export const getCoachById = async (id: string) => {
   return await apiRequest(`/coaches/${id}`, 'GET');
+};
+
+// Consultation booking endpoints
+export const bookConsultation = async (payload: {
+  coachId: string;
+  assessmentId?: string;
+  athleteNotes?: string;
+  scheduledDate?: string | null;
+}) => {
+  return await apiRequest('/consultations', 'POST', payload);
+};
+
+export const getMyConsultations = async () => {
+  return await apiRequest('/consultations/mine', 'GET');
 };

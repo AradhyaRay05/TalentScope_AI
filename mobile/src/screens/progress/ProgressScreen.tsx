@@ -1,226 +1,424 @@
-import React from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  useWindowDimensions
+} from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '../../theme/colors';
+import { CONTAINER_MAX } from '../../theme/useResponsive';
 import CircularScoreGauge from '../../components/CircularScoreGauge';
+import MetricTrendChart from '../../components/MetricTrendChart';
+import { getAthleteProgress, getAthleteStats } from '../../services/api';
 
-const TRACK_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAhLnMoVeDb0w8XIOZEZLXvKTjAGQN6qcnNRVnBf9ZSEhfqcttYews79S-8cFeot9JM6dHQjWlaj78cZTh9ACG8K5zPpQIFnVEb3T3mAaBJ-t1HFy-74O6CfkmnNOYJwF83O0XwPI5ipzHb2SoVSE7Y_E5kZwM0xA4nK1JOvNIllyA3flHApWCaiFnLZB1KJlHPTu6UEjR_r7BS4J9mcnZik3NTjS1055ZEJO8H6Ur2YVmI4dZ5lEaoWHQ2Msl8GLdswNyWSPau47g';
+type TrendPoint = { value: number; date: string };
 
-const MONTHLY_BARS = [40, 45, 55, 52, 65, 70, 85, 78, 82, 80, 88, 92];
-const MONTH_LABELS = ['JAN', 'MAR', 'MAY', 'JUL', 'SEP', 'NOV'];
-const PEAK_INDEX = 6;
+type Milestone = {
+  icon: 'flag' | 'emoji-events' | 'schedule' | 'lock';
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  detail: string;
+  locked?: boolean;
+};
 
-const MILESTONES = [
-  {
-    icon: 'bolt' as const,
-    iconBg: Colors.tertiaryFixed,
-    iconColor: Colors.onTertiaryFixed,
-    title: 'Lightning Start',
-    detail: 'Top 5% Acceleration in Week 1',
-    locked: false
-  },
-  {
-    icon: 'repeat' as const,
+export default function ProgressScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
+  const padH = isMd ? Spacing.marginDesktop : Spacing.marginMobile;
+  const container = { alignSelf: 'center' as const, width: '100%' as const, maxWidth: CONTAINER_MAX };
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [progressRes, statsRes] = await Promise.all([getAthleteProgress(), getAthleteStats()]);
+      setProgress(progressRes?.data ?? null);
+      setStats(statsRes?.data ?? null);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load progress data');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const rawTrend: any[] =
+    progress?.chronologicalTrend?.length ? progress.chronologicalTrend : stats?.metricVelocity || [];
+  const trendPoints: TrendPoint[] = rawTrend
+    .map((p: any) => ({ value: typeof p.score === 'number' ? p.score : p.value, date: p.date }))
+    .filter((p: any) => typeof p.value === 'number');
+  const hasTrend = trendPoints.length >= 2;
+  const chartData = trendPoints.map(p => p.value);
+  const chartLabels = trendPoints.map(p => p.date);
+
+  const totalCount: number | null = progress?.totalAssessments ?? stats?.totalAssessments ?? null;
+  const completedCount: number | null =
+    progress?.completedAssessmentsCount ?? stats?.totalCompletedAssessments ?? null;
+  const percentile: string | null = typeof stats?.percentile === 'string' ? stats.percentile : null;
+  const peakScore: number | null = typeof progress?.peakScore === 'number' ? progress.peakScore : null;
+  const latestScore: number | null =
+    typeof progress?.latestScore === 'number'
+      ? progress.latestScore
+      : typeof stats?.score === 'number'
+        ? stats.score
+        : null;
+  const scoreDifferential: number | null =
+    typeof progress?.scoreDifferential === 'number' ? progress.scoreDifferential : null;
+
+  const completionRate =
+    typeof totalCount === 'number' && totalCount > 0 && typeof completedCount === 'number'
+      ? Math.round((completedCount / totalCount) * 100)
+      : null;
+
+  const historyRecords: any[] = (progress?.assessmentHistory || []).filter(
+    (a: any) => a.status === 'completed'
+  );
+  const firstRecord = historyRecords.length ? historyRecords[historyRecords.length - 1] : null;
+  const latestRecord = historyRecords.length ? historyRecords[0] : null;
+  const bestRecord = historyRecords.reduce(
+    (best: any, a: any) => (!best || (typeof a.score === 'number' && a.score > best.score) ? a : best),
+    null
+  );
+
+  const milestones: Milestone[] = [];
+  if (firstRecord) {
+    milestones.push({
+      icon: 'flag',
+      iconBg: Colors.tertiaryFixed,
+      iconColor: Colors.onTertiaryFixed,
+      title: 'First Assessment',
+      detail: `${firstRecord.testType || 'Assessment'} • ${firstRecord.date}`
+    });
+  }
+  milestones.push({
+    icon: 'emoji-events',
     iconBg: Colors.secondaryContainer,
     iconColor: Colors.onSecondaryContainer,
-    title: 'Iron Consistency',
-    detail: '30 Days of continuous tracking',
-    locked: false
-  },
-  {
-    icon: 'lock' as const,
+    title: 'Best Score',
+    detail:
+      bestRecord && typeof bestRecord.score === 'number'
+        ? `${bestRecord.score}/100 • ${bestRecord.assessmentCode}`
+        : 'Complete an assessment to set your benchmark'
+  });
+  if (latestRecord && latestRecord !== firstRecord) {
+    milestones.push({
+      icon: 'schedule',
+      iconBg: Colors.secondaryFixed,
+      iconColor: Colors.onSecondaryContainer,
+      title: 'Latest Assessment',
+      detail: `${latestRecord.testType || 'Assessment'} • ${latestRecord.date}`
+    });
+  }
+  milestones.push({
+    icon: 'lock',
     iconBg: Colors.surfaceContainerHighest,
     iconColor: Colors.onSurfaceVariant,
     title: 'Elite Tier Alpha',
-    detail: 'Reach 90+ Score to unlock',
-    locked: true
-  }
-];
+    detail: 'Reach a 90+ overall score to unlock',
+    locked: !peakScore || peakScore < 90
+  });
 
-export default function ProgressScreen() {
+  const averages = progress?.historicalAverages || null;
+
+  const errorBanner = (
+    <View style={styles.errorBanner}>
+      <Icon name="error-outline" size={18} color={Colors.error} />
+      <Text style={styles.errorText}>{error}</Text>
+      <TouchableOpacity style={styles.retryBtn} onPress={fetchData} activeOpacity={0.85}>
+        <Text style={styles.retryText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const chartCard = (
+    <View style={styles.card}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.md }}>
+        <View>
+          <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.secondary }]}>PERFORMANCE TREND</Text>
+          <Text style={[Typography.headlineMd, { fontSize: 19, lineHeight: 25, marginTop: Spacing.xs }]}>
+            Aggregate Performance Score
+          </Text>
+        </View>
+        {hasTrend && (
+          <View style={styles.yearPill}>
+            <Text style={styles.yearPillText}>{`${chartLabels[0]} - ${chartLabels[chartLabels.length - 1]}`}</Text>
+          </View>
+        )}
+      </View>
+
+      {hasTrend ? (
+        <MetricTrendChart height={256} data={chartData} labels={chartLabels} />
+      ) : (
+        <View style={styles.emptyState}>
+          <Icon name="assessment" size={40} color={Colors.outline} />
+          <Text style={styles.emptyTitle}>Run your first assessment</Text>
+          <Text style={styles.emptyBody}>Your performance trend will appear once an assessment is completed.</Text>
+          <TouchableOpacity
+            style={styles.emptyBtn}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Assess' })}
+          >
+            <Text style={styles.emptyBtnText}>Start Assessment</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  const summaryBody = (() => {
+    if (!completedCount) {
+      return 'Complete assessments to unlock AI-driven analysis of your performance trajectory.';
+    }
+    const parts: string[] = [`${completedCount} assessment${completedCount === 1 ? '' : 's'} completed`];
+    if (peakScore !== null) parts.push(`peak score ${peakScore}`);
+    if (latestScore !== null && scoreDifferential !== null) {
+      parts.push(`latest ${latestScore} (${scoreDifferential >= 0 ? '+' : ''}${scoreDifferential} vs previous)`);
+    } else if (latestScore !== null) {
+      parts.push(`latest score ${latestScore}`);
+    }
+    if (percentile) parts.push(`currently ranked in the ${percentile}`);
+    return `Across your records: ${parts.join(', ')}.`;
+  })();
+
+  const aiCard = (
+    <View style={[styles.aiCard, isLg && { flex: 1 }]}>
+      <View style={styles.aiWatermark}>
+        <Icon name="psychology" size={64} color="rgba(255,255,255,0.2)" />
+      </View>
+      <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.secondaryContainer }]}>
+        AI CORE ANALYSIS
+      </Text>
+      <Text style={[Typography.headlineMd, { fontSize: 20, lineHeight: 26, marginTop: Spacing.xs, marginBottom: Spacing.md }]}>
+        Performance Summary
+      </Text>
+      <Text style={styles.aiBody}>{summaryBody}</Text>
+    </View>
+  );
+
+  const consistencyCard = (
+    <View style={styles.consistencyCard}>
+      <View>
+        <Text style={[Typography.labelCaps, { fontSize: 10, color: Colors.onSurfaceVariant }]}>
+          ASSESSMENTS COMPLETED
+        </Text>
+        <Text style={styles.consistencyValue}>
+          {typeof completedCount === 'number' && typeof totalCount === 'number'
+            ? `${completedCount}/${totalCount}`
+            : '--'}
+        </Text>
+        <Text style={styles.consistencyNote}>
+          {percentile ? `Percentile ${percentile}` : 'Percentile --'}
+        </Text>
+      </View>
+      <CircularScoreGauge
+        size={48}
+        strokeWidth={3}
+        score={completionRate ?? 0}
+        trackColor={Colors.surfaceContainerHighest}
+        rotate
+      >
+        <Text style={styles.ringHidden}>{''}</Text>
+      </CircularScoreGauge>
+    </View>
+  );
+
+  const milestonesCard = (
+    <View style={[styles.card, isMd && { flex: 1 }]}>
+      <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant, marginBottom: Spacing.md }]}>
+        MILESTONES & ACHIEVEMENTS
+      </Text>
+      {historyRecords.length ? (
+        <View style={{ gap: Spacing.base }}>
+          {milestones.map(m => (
+            <View key={m.title} style={[styles.milestoneRow, m.locked && styles.milestoneLocked]}>
+              <View style={[styles.milestoneIcon, { backgroundColor: m.iconBg }]}>
+                <Icon name={m.icon} size={18} color={m.iconColor} />
+              </View>
+              <View>
+                <Text style={styles.milestoneTitle}>{m.title}</Text>
+                <Text style={styles.milestoneDetail}>{m.detail}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.dashedPlaceholder}>
+          <Icon name="flag" size={28} color={Colors.outline} />
+          <Text style={styles.emptyBody}>Complete your first assessment to unlock milestones.</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const noDataMetric = (
+    <View style={[styles.dashedPlaceholder, { flex: 1, minHeight: 120 }]}>
+      <Text style={styles.emptyBody}>No data yet</Text>
+    </View>
+  );
+
+  const qualityMetric = averages ? (
+    <EvolutionMetric
+      title="Movement Quality"
+      value={`${averages.avgMovementQuality}/100`}
+      percent={averages.avgMovementQuality}
+      note="Average movement quality across your completed assessments."
+    />
+  ) : null;
+  const alignmentMetric = averages ? (
+    <EvolutionMetric
+      title="Joint Alignment"
+      value={`${averages.avgJointAlignment}/100`}
+      percent={averages.avgJointAlignment}
+      note="Average joint alignment across your completed assessments."
+    />
+  ) : null;
+
+  const evolutionCard = (
+    <View style={[styles.card, isMd && { flex: 1 }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg }}>
+        <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant }]}>
+          BIOMETRIC EVOLUTION
+        </Text>
+        {averages && (
+          <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={[styles.legendDot, { backgroundColor: Colors.secondary }]} />
+              <Text style={styles.legendText}>Quality</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={[styles.legendDot, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
+              <Text style={styles.legendText}>Alignment</Text>
+            </View>
+          </View>
+        )}
+      </View>
+      {isMd ? (
+        <View style={{ flexDirection: 'row', gap: Spacing.lg }}>
+          <View style={{ flex: 1 }}>{qualityMetric ?? noDataMetric}</View>
+          <View style={{ flex: 1 }}>{alignmentMetric ?? noDataMetric}</View>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg }}>
+          {qualityMetric ?? noDataMetric}
+          {alignmentMetric ?? noDataMetric}
+        </View>
+      )}
+    </View>
+  );
+
+  const trajectoryCard = (
+    <View style={[styles.trajectoryCard, isMd && { marginTop: Spacing.gutter }]}>
+      <View style={styles.trajectoryHeader}>
+        <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant }]}>
+          CAREER TRAJECTORY MAP
+        </Text>
+      </View>
+      <View style={[styles.trajectoryBody, styles.dashedPlaceholder]}>
+        <Icon name="map" size={36} color={Colors.outline} />
+        <Text style={styles.emptyBody}>No data yet</Text>
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: padH }]}>
         <Text style={styles.brand}>TalentScope AI</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {/* Page Header */}
-        <View style={styles.pageHeader}>
-          <Text style={[Typography.headlineLgMobile, { marginBottom: Spacing.xs }]}>Athlete Journey</Text>
-          <Text style={[Typography.bodyLg, { fontSize: 16, color: Colors.onSurfaceVariant }]}>
-            Track your trajectory across 12 months of elite data points.
-          </Text>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.secondary} />
         </View>
-
-        <View style={{ paddingHorizontal: Spacing.marginMobile, gap: Spacing.gutter }}>
-          {/* Performance Trend */}
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.md }}>
-              <View>
-                <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.secondary }]}>PERFORMANCE TREND</Text>
-                <Text style={[Typography.headlineMd, { fontSize: 19, lineHeight: 25, marginTop: Spacing.xs }]}>
-                  Aggregate Performance Score
-                </Text>
-              </View>
-              <View style={styles.yearPill}>
-                <Text style={styles.yearPillText}>JAN - DEC 2024</Text>
-              </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+          <View style={container}>
+            <View style={[styles.pageHeader, { paddingHorizontal: padH }]}>
+              <Text style={[isMd ? Typography.headlineLg : Typography.headlineLgMobile, { marginBottom: Spacing.xs }]}>
+                Athlete Journey
+              </Text>
+              <Text style={[Typography.bodyLg, isMd ? {} : { fontSize: 16 }, { color: Colors.onSurfaceVariant }]}>
+                Track your trajectory across all recorded assessments.
+              </Text>
             </View>
 
-            <View style={styles.chartArea}>
-              {[0, 1, 2, 3].map(i => (
-                <View key={`grid-${i}`} style={[styles.gridLine, { top: `${8 + i * 24}%` }]} />
-              ))}
-              <View style={styles.barsRow}>
-                {MONTHLY_BARS.map((pct, i) => (
-                  <View key={`bar-${i}`} style={styles.barSlot}>
-                    {i === PEAK_INDEX && (
-                      <View style={styles.peakTag}>
-                        <Text style={styles.peakTagText}>PEAK</Text>
+            <View style={{ paddingHorizontal: padH, gap: Spacing.gutter }}>
+              {error && errorBanner}
+
+              {isMd ? (
+                <>
+                  {isLg ? (
+                    <View style={{ flexDirection: 'row', gap: Spacing.gutter, alignItems: 'stretch' }}>
+                      <View style={{ flex: 8 }}>{chartCard}</View>
+                      <View style={{ flex: 4, gap: Spacing.gutter }}>
+                        {aiCard}
+                        {consistencyCard}
                       </View>
-                    )}
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          height: `${pct}%`,
-                          backgroundColor: i === PEAK_INDEX ? Colors.secondary : 'rgba(0,104,122,0.12)'
-                        },
-                        i === PEAK_INDEX && styles.peakBar
-                      ]}
-                    />
+                    </View>
+                  ) : (
+                    <>
+                      {chartCard}
+                      <View style={{ gap: Spacing.gutter }}>
+                        {aiCard}
+                        {consistencyCard}
+                      </View>
+                    </>
+                  )}
+
+                  <View style={{ flexDirection: 'row', gap: Spacing.gutter, alignItems: 'stretch' }}>
+                    <View style={{ flex: isLg ? 4 : 6 }}>{milestonesCard}</View>
+                    <View style={{ flex: isLg ? 8 : 6 }}>{evolutionCard}</View>
                   </View>
-                ))}
-              </View>
-            </View>
-            <View style={styles.monthLabelsRow}>
-              {MONTH_LABELS.map(m => (
-                <Text key={m} style={styles.monthLabel}>
-                  {m}
-                </Text>
-              ))}
-            </View>
-          </View>
 
-          {/* AI Core Analysis + Consistency */}
-          <View style={{ gap: Spacing.gutter }}>
-            <View style={styles.aiCard}>
-              <View style={styles.aiWatermark}>
-                <Icon name="psychology" size={64} color="rgba(255,255,255,0.2)" />
-              </View>
-              <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.secondaryContainer }]}>
-                AI CORE ANALYSIS
-              </Text>
-              <Text style={[Typography.headlineMd, { fontSize: 20, lineHeight: 26, marginTop: Spacing.xs, marginBottom: Spacing.md }]}>
-                Velocity Plateau Detected
-              </Text>
-              <Text style={styles.aiBody}>
-                Your acceleration metrics have stabilized over the last 14 days. AI suggests a tactical shift in
-                eccentric loading to break the current threshold.
-              </Text>
-              <TouchableOpacity style={styles.strategyBtn} activeOpacity={0.85}>
-                <Text style={styles.strategyBtnText}>View Strategy</Text>
-              </TouchableOpacity>
-            </View>
+                  {trajectoryCard}
+                </>
+              ) : (
+                <>
+                  {chartCard}
 
-            <View style={styles.consistencyCard}>
-              <View>
-                <Text style={[Typography.labelCaps, { fontSize: 10, color: Colors.onSurfaceVariant }]}>CONSISTENCY</Text>
-                <Text style={styles.consistencyValue}>94%</Text>
-              </View>
-              <CircularScoreGauge size={48} strokeWidth={3} score={94} trackColor={Colors.surfaceContainerHighest} rotate>
-                <Text style={styles.ringHidden}>{''}</Text>
-              </CircularScoreGauge>
-            </View>
-          </View>
-
-          {/* Milestones */}
-          <View style={styles.card}>
-            <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant, marginBottom: Spacing.md }]}>
-              MILESTONES & ACHIEVEMENTS
-            </Text>
-            <View style={{ gap: Spacing.base }}>
-              {MILESTONES.map(m => (
-                <View key={m.title} style={[styles.milestoneRow, m.locked && styles.milestoneLocked]}>
-                  <View style={[styles.milestoneIcon, { backgroundColor: m.iconBg }]}>
-                    <Icon name={m.icon} size={18} color={m.iconColor} />
+                  <View style={{ gap: Spacing.gutter }}>
+                    {aiCard}
+                    {consistencyCard}
                   </View>
-                  <View>
-                    <Text style={styles.milestoneTitle}>{m.title}</Text>
-                    <Text style={styles.milestoneDetail}>{m.detail}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
 
-          {/* Biometric Evolution */}
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg }}>
-              <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant }]}>
-                BIOMETRIC EVOLUTION
-              </Text>
-              <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <View style={[styles.legendDot, { backgroundColor: Colors.secondary }]} />
-                  <Text style={styles.legendText}>V02 Max</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <View style={[styles.legendDot, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
-                  <Text style={styles.legendText}>Resting HR</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg }}>
-              <EvolutionMetric title="V02 Max Efficiency" delta="+12.4%" percent={82} note="Your respiratory efficiency has surpassed the regional pro-average by 4% this quarter." />
-              <EvolutionMetric title="Recovery Speed" delta="+8.1%" percent={65} note="Neural recovery index is showing positive correlation with increased sleep quality." />
-            </View>
-          </View>
+                  {milestonesCard}
 
-          {/* Career Trajectory Map */}
-          <View style={styles.trajectoryCard}>
-            <View style={styles.trajectoryHeader}>
-              <Text style={[Typography.labelCaps, { fontSize: 11, color: Colors.onSurfaceVariant }]}>
-                CAREER TRAJECTORY MAP
-              </Text>
-            </View>
-            <View style={styles.trajectoryBody}>
-              <Image source={{ uri: TRACK_IMG }} style={styles.trackImage} />
-              <Svg viewBox="0 0 800 300" style={StyleSheet.absoluteFill}>
-                <Defs>
-                  <LinearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <Stop offset="0%" stopColor="#00687a" stopOpacity={0.2} />
-                    <Stop offset="100%" stopColor="#00687a" stopOpacity={1} />
-                  </LinearGradient>
-                </Defs>
-                <Path d="M0,250 Q100,240 200,200 T400,180 T600,100 T800,40" fill="none" stroke="#000000" strokeWidth={3} strokeDasharray="10 5" opacity={0.2} />
-                <Path d="M0,250 Q100,240 200,200 T400,180 T600,100 T800,40" fill="none" stroke="url(#cyanGrad)" strokeWidth={4} strokeLinecap="round" />
-                <Circle cx={200} cy={200} r={6} fill="#000000" />
-                <Circle cx={400} cy={180} r={6} fill="#000000" />
-                <Circle cx={600} cy={100} r={6} fill="#000000" />
-                <Circle cx={800} cy={40} r={8} fill="#00687a" />
-              </Svg>
-              <Text style={styles.proReadyText}>PRO READY</Text>
+                  {evolutionCard}
+
+                  {trajectoryCard}
+                </>
+              )}
             </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-function EvolutionMetric({ title, delta, percent, note }: { title: string; delta: string; percent: number; note: string }) {
+function EvolutionMetric({ title, value, percent, note }: { title: string; value: string; percent: number; note: string }) {
   return (
     <View style={{ width: '100%', gap: Spacing.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <Text style={styles.evolutionTitle}>{title}</Text>
-        <Text style={styles.evolutionDelta}>{delta}</Text>
+        <Text style={styles.evolutionDelta}>{value}</Text>
       </View>
       <View style={styles.evolutionTrack}>
-        <View style={[styles.evolutionFill, { width: `${percent}%` }]} />
+        <View style={[styles.evolutionFill, { width: `${Math.min(Math.max(percent, 0), 100)}%` }]} />
       </View>
       <Text style={styles.evolutionNote}>{note}</Text>
     </View>
@@ -229,6 +427,7 @@ function EvolutionMetric({ title, delta, percent, note }: { title: string; delta
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     paddingTop: 44,
     paddingBottom: Spacing.sm,
@@ -258,60 +457,53 @@ const styles = StyleSheet.create({
     borderRadius: 999
   },
   yearPillText: { fontSize: 11, fontFamily: 'Inter_700Bold', fontWeight: '700', color: Colors.onSecondaryContainer },
-  chartArea: {
+  emptyState: {
     height: 256,
-    position: 'relative'
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(198,198,205,0.5)',
+    borderRadius: 12,
+    padding: Spacing.md
   },
-  gridLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(198,198,205,0.15)'
-  },
-  barsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-    height: '100%',
-    paddingHorizontal: Spacing.base,
-    paddingBottom: 4
-  },
-  barSlot: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'flex-end',
-    alignItems: 'center'
-  },
-  bar: { width: '100%', borderTopLeftRadius: 3, borderTopRightRadius: 3 },
-  peakBar: {
-    shadowColor: Colors.secondary,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4
-  },
-  peakTag: {
-    position: 'absolute',
-    top: -22,
+  emptyTitle: { ...Typography.headlineMd, fontSize: 17, lineHeight: 23 },
+  emptyBody: { fontSize: 12, lineHeight: 17, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  emptyBtn: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.base,
-    paddingVertical: 3,
-    borderRadius: 4,
-    zIndex: 5
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+    marginTop: Spacing.xs
   },
-  peakTagText: { ...Typography.labelCaps, fontSize: 10, color: '#ffffff' },
-  monthLabelsRow: {
+  emptyBtnText: { fontFamily: 'Inter_700Bold', fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  dashedPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(198,198,205,0.5)',
+    borderRadius: 12,
+    padding: Spacing.md
+  },
+  errorBanner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: Spacing.sm
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.errorContainer,
+    borderRadius: 10,
+    padding: Spacing.base
   },
-  monthLabel: {
-    ...Typography.labelCaps,
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: Colors.onSurfaceVariant,
-    opacity: 0.6
+  errorText: { flex: 1, fontSize: 13, lineHeight: 18, color: Colors.error },
+  retryBtn: {
+    backgroundColor: Colors.error,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.xs,
+    borderRadius: 6
   },
+  retryText: { fontFamily: 'Inter_700Bold', fontSize: 12, fontWeight: '700', color: '#ffffff' },
   aiCard: {
     position: 'relative',
     overflow: 'hidden',
@@ -327,15 +519,7 @@ const styles = StyleSheet.create({
     elevation: 8
   },
   aiWatermark: { position: 'absolute', top: 0, right: 0, padding: Spacing.md },
-  aiBody: { fontSize: 13, lineHeight: 19, color: 'rgba(255,255,255,0.8)', marginBottom: Spacing.lg },
-  strategyBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.secondary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: 8
-  },
-  strategyBtnText: { fontFamily: 'Inter_700Bold', fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  aiBody: { fontSize: 13, lineHeight: 19, color: 'rgba(255,255,255,0.8)' },
   consistencyCard: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -347,6 +531,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between'
   },
   consistencyValue: { ...Typography.headlineMd, marginTop: 2 },
+  consistencyNote: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2 },
   ringHidden: { display: 'none' as any },
   milestoneRow: {
     flexDirection: 'row',
@@ -403,15 +588,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(198,198,205,0.2)'
   },
-  trajectoryBody: { height: 400, backgroundColor: '#f8fafc', position: 'relative' },
-  trackImage: { ...StyleSheet.absoluteFillObject, opacity: 0.3 },
-  proReadyText: {
-    position: 'absolute',
-    right: 28,
-    top: '12%',
-    fontFamily: 'Geist_800ExtraBold',
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.secondary
-  }
+  trajectoryBody: { height: 400, backgroundColor: '#f8fafc', margin: Spacing.md }
 });

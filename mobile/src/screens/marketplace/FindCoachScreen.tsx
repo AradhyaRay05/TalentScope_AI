@@ -1,41 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Image, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, useWindowDimensions, StyleSheet } from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
+import { CONTAINER_MAX } from '../../theme/useResponsive';
 import { getCoaches } from '../../services/api';
-
-const COACH_CARDS = [
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCSjWh24stxnk030t83Sqx38TTOmSJYV6SpMuUXKmI8-DIQ2PRRKWnLI3LEnE8Eo5FrZQ7KC4-KY5lBTLdjY4sULraSY4Xnuna4v5l09lw2esBoV-2ZxALUktUxvur0gtZy72wJoFt685e6h0Ek5gpUAW3-VwiFXii9zLNuuLTHzEs418xkTNK_qHWHH3TmwBjYveRETw1KE6-pmZ7GcfubHOlT9T3fLOm6cM2LBzsvFVy0OZ5D1q91E8jgGUyBvOmSphR_gOjacx8',
-    rating: '4.9',
-    specialty: 'STRENGTH & CONDITIONING',
-    name: 'Dr. Marcus Vance',
-    exp: '12+ Years Exp.',
-    price: '$150',
-    quote: '"Optimizing metabolic thresholds through proprietary AI-driven biomechanical feedback loops."',
-    tags: ['Biometrics', 'Sprint Mechanics', 'NFL Prep']
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAzdcpQWKPPaTVWWZe_JjtAvOVCPusIkwNzmE5468QyEAUjhsouz4Bp7N0C5N4ccnv40RBBxLXZ7GJBzeMm4JFEeA-jT3KIXw8Zd-WGO6tgkIiwL0MQNqMb6CI9u0ThlrvbxgSPf5wCdgOQbWr__BOnfl2jLOIvAgsszFlzqR_kssF1s2r1PoH9w4C0EmYwd6cISvIVYwoWlPtykBN0y2QnASTd62cxeCPCOMXi_DnlKvSaH1W_J46Lax49OBpvkUnWNV2GvcxFzFo',
-    rating: '5.0',
-    specialty: 'DATA ANALYSIS / SWIMMING',
-    name: 'Elena Rodriguez',
-    exp: '8 Years Exp.',
-    price: '$125',
-    quote: '"Specializing in hydro-dynamic drag reduction and high-frequency stroke optimization."',
-    tags: ['VO2 Max', 'Hydro-Dynamics', 'Olympic Level']
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKQBhRhndCI-qMaHripr716Th49Tmc4Q6td6bqbHvqgGTiAcTK2y09p33V9A8K5dGXe-KIPZJqseu7IwzooiRoc-fpAs6f9MmAIU-td29aI4QyMuU4ARy6i-Bnj-g6Kjv48Ug2eaYmJtoGvv3Ytl444HpEfXiteVVLo2TYXd4DGzuei6WYszZstBPRBx0j7Hi9pu45hFWMbBtfKsd7y1Pv7fSsptkIlchcODiYSECxdsutYx5GteCYMb9UT-2VHGcOt1IugOxX58Q',
-    rating: '4.8',
-    specialty: 'NEUROMUSCULAR RECOVERY',
-    name: 'James Sterling',
-    exp: '15 Years Exp.',
-    price: '$190',
-    quote: '"Integrating CNS fatigue monitoring with elite recovery protocols for maximum longevity."',
-    tags: ['CNS Optimization', 'Sleep Tech', 'Recovery AI']
-  }
-];
 
 const PACKAGES = [
   {
@@ -77,75 +45,136 @@ const SPORT_OPTIONS = ['All Sports', 'Football / Soccer', 'Athletics', 'Swimming
 const EXP_OPTIONS = ['Any Years', '5+ Years', '10+ Years', 'Professional Only'];
 
 export default function FindCoachScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
+  const isXL = width >= 1280;
+  const padH = isMd ? Spacing.marginDesktop : Spacing.marginMobile;
+  const container = { alignSelf: 'center' as const, width: '100%' as const, maxWidth: CONTAINER_MAX };
+
+  const grid = (nodes: React.ReactNode[], cols: number, gap: number) => {
+    if (cols <= 1) return <View style={{ gap }}>{nodes}</View>;
+    const rows: React.ReactNode[][] = [];
+    for (let i = 0; i < nodes.length; i += cols) rows.push(nodes.slice(i, i + cols));
+    return (
+      <View>
+        {rows.map((row, ri) => (
+          <View key={ri} style={{ flexDirection: 'row', gap, marginBottom: ri < rows.length - 1 ? gap : 0 }}>
+            {row.map((node, ci) => (
+              <View key={ci} style={{ flex: 1 }}>
+                {node}
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const [sport, setSport] = useState(SPORT_OPTIONS[0]);
   const [experience, setExperience] = useState(EXP_OPTIONS[0]);
   const [location, setLocation] = useState('');
   const [priceRange, setPriceRange] = useState(50);
-  const [coaches, setCoaches] = useState<any[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [coaches, setCoaches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCoaches = async (opts?: { search?: string; specialty?: string }) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getCoaches({
+        search: opts?.search?.trim() || undefined,
+        specialty: opts?.specialty && opts.specialty !== SPORT_OPTIONS[0] ? opts.specialty : undefined
+      });
+      setCoaches(Array.isArray(res?.data) ? res.data : []);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load coaches');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await getCoaches();
-        const list = res?.data || res?.coaches || [];
-        if (mounted && Array.isArray(list) && list.length > 0) setCoaches(list);
-      } catch {
-        // fall back to static demo cards
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
+    loadCoaches();
   }, []);
 
-  const displayedCards =
-    coaches && coaches.length
-      ? coaches.map(c => ({
-          key: c._id || c.id || c.name,
-          img:
-            c.avatar ||
-            c.photo ||
-            COACH_CARDS[Math.floor(Math.random() * COACH_CARDS.length)].img,
-          rating: String(c.rating ?? 4.9),
-          specialty: (c.title || c.specialties?.[0] || 'ELITE COACH').toUpperCase(),
-          name: c.name || 'Coach',
-          exp: `${c.experienceYears || 10}+ Years Exp.`,
-          price: `$${c.hourlyRate || c.rate || 150}`,
-          quote: `"${c.bio || 'Verified TalentScope AI coach specializing in elite performance optimization.'}"`,
-          tags: Array.isArray(c.specialties) ? c.specialties.slice(0, 3) : ['Biometrics', 'Performance']
-        }))
-      : COACH_CARDS.map(c => ({ ...c, key: c.name }));
+  const applyFilters = () => loadCoaches({ search: searchQuery, specialty: sport });
+
+  const displayedCards = coaches.map(c => ({
+    id: c._id,
+    img: typeof c.avatar === 'string' && c.avatar ? c.avatar : null,
+    rating: c.rating != null ? String(c.rating) : null,
+    specialty: (c.title || (Array.isArray(c.specialties) && c.specialties[0]) || '').toUpperCase(),
+    name: c.name || 'Coach',
+    exp: c.experienceYears != null ? `${c.experienceYears}+ Years Exp.` : null,
+    price: c.hourlyRate != null && c.hourlyRate !== '' ? String(c.hourlyRate) : null,
+    quote: c.bio ? `"${c.bio}"` : null,
+    tags: Array.isArray(c.specialties) ? c.specialties.slice(0, 3) : []
+  }));
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, isLg && { flexDirection: 'row' }]}>
+      {isLg && <SideNav navigation={navigation} />}
+      <View style={{ flex: 1 }}>
       <View style={styles.header}>
         <Text style={styles.brand}>TalentScope AI</Text>
         <View style={styles.headerSearch}>
           <Icon name="search" size={18} color={Colors.onSurfaceVariant} />
-          <TextInput placeholder="Search experts..." placeholderTextColor="rgba(118,119,125,0.6)" style={styles.headerSearchInput} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={applyFilters}
+            returnKeyType="search"
+            placeholder="Search experts..."
+            placeholderTextColor="rgba(118,119,125,0.6)"
+            style={styles.headerSearchInput}
+          />
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: isLg ? Spacing.xl : 120 }} showsVerticalScrollIndicator={false}>
+        <View style={{ paddingHorizontal: padH }}>
+        <View style={container}>
         {/* Hero */}
-        <View style={styles.heroSection}>
-          <Text style={[Typography.labelCaps, { color: Colors.secondary, marginBottom: Spacing.xs }]}>ELITE NETWORK</Text>
-          <Text style={[Typography.displayHero, { fontSize: 36, lineHeight: 42, letterSpacing: -1.4 }]}>
-            Discover High Performance.
-          </Text>
-          <Text style={[Typography.bodyLg, { fontSize: 16, lineHeight: 25, color: Colors.onSurfaceVariant, marginTop: Spacing.base }]}>
-            Access verified AI-enhanced coaches specializing in elite biometrics and professional performance optimization.
-          </Text>
+        <View
+          style={[
+            styles.heroSection,
+            isMd && { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: Spacing.md, marginBottom: Spacing.xl }
+          ]}
+        >
+          <View style={{ flexShrink: 1 }}>
+            <Text style={[Typography.labelCaps, { color: Colors.secondary, marginBottom: Spacing.xs }]}>ELITE NETWORK</Text>
+            <Text style={[Typography.displayHero, !isMd && { fontSize: 36, lineHeight: 42, letterSpacing: -1.4 }]}>
+              Discover High Performance.
+            </Text>
+            <Text
+              style={[
+                Typography.bodyLg,
+                { color: Colors.onSurfaceVariant, marginTop: Spacing.base },
+                isMd ? { maxWidth: 576 } : { fontSize: 16, lineHeight: 25 }
+              ]}
+            >
+              Access verified AI-enhanced coaches specializing in elite biometrics and professional performance optimization.
+            </Text>
+          </View>
         </View>
 
         {/* Filter Bar */}
-        <View style={[styles.filterBar]}>
-          <View style={{ width: '47%', flexGrow: 1 }}>
+        <View style={[styles.filterBar, { marginTop: isMd ? 0 : Spacing.lg }]}>
+          <View style={isMd ? { flex: 1, minWidth: 200 } : { width: '47%', flexGrow: 1 }}>
             <Text style={styles.filterLabel}>SPORT CATEGORY</Text>
-            <OptionSelector options={SPORT_OPTIONS} value={sport} onChange={setSport} />
+            <OptionSelector
+              options={SPORT_OPTIONS}
+              value={sport}
+              onChange={v => {
+                setSport(v);
+                loadCoaches({ search: searchQuery, specialty: v });
+              }}
+            />
           </View>
-          <View style={{ width: '47%', flexGrow: 1 }}>
+          <View style={isMd ? { flex: 1, minWidth: 200 } : { width: '47%', flexGrow: 1 }}>
             <Text style={styles.filterLabel}>LOCATION</Text>
             <View style={styles.locationWrap}>
               <Icon name="location-on" size={16} color={Colors.onSurfaceVariant} />
@@ -158,11 +187,11 @@ export default function FindCoachScreen({ navigation }: any) {
               />
             </View>
           </View>
-          <View style={{ width: '47%', flexGrow: 1 }}>
+          <View style={isMd ? { flex: 1, minWidth: 200 } : { width: '47%', flexGrow: 1 }}>
             <Text style={styles.filterLabel}>EXPERIENCE</Text>
             <OptionSelector options={EXP_OPTIONS} value={experience} onChange={setExperience} />
           </View>
-          <View style={{ width: '47%', flexGrow: 1 }}>
+          <View style={isMd ? { flex: 1, minWidth: 200 } : { width: '47%', flexGrow: 1 }}>
             <Text style={styles.filterLabel}>PRICE RANGE</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
               <Text style={styles.priceSymbol}>$</Text>
@@ -174,81 +203,148 @@ export default function FindCoachScreen({ navigation }: any) {
               <Text style={styles.priceSymbol}>$$$</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.applyBtn} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.applyBtn} activeOpacity={0.85} onPress={applyFilters}>
             <Text style={styles.applyBtnText}>Apply Filters</Text>
           </TouchableOpacity>
         </View>
 
         {/* Coach Cards */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile }}>
-          <View style={{ gap: Spacing.gutter, marginTop: Spacing.lg }}>
-            {displayedCards.map(c => (
-              <View key={c.key} style={styles.coachCard}>
-                <View>
-                  <Image source={{ uri: c.img }} style={styles.coachImage} />
-                  <View style={styles.ratingPill}>
-                    <Icon name="star" size={15} color={Colors.secondary} />
-                    <Text style={styles.ratingText}>{c.rating}</Text>
-                  </View>
-                  <View style={styles.nameGradient}>
-                    <Text style={[Typography.labelCaps, { fontSize: 10, letterSpacing: 2, color: 'rgba(255,255,255,0.85)' }]}>
-                      {c.specialty}
-                    </Text>
-                    <Text style={styles.coachName}>{c.name}</Text>
-                  </View>
-                </View>
-                <View style={{ padding: Spacing.md, gap: Spacing.md }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-                      <Icon name="history-edu" size={20} color={Colors.onSurfaceVariant} />
-                      <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, fontSize: 14 }]}>{c.exp}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                      <Text style={styles.price}>{c.price}</Text>
-                      <Text style={styles.perHour}>/hr</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.quote}>{c.quote}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs }}>
-                    {c.tags.map(t => (
-                      <View key={t} style={styles.tagPill}>
-                        <Text style={styles.tagText}>{t.toUpperCase()}</Text>
+        <View style={{ marginTop: Spacing.lg }}>
+          {loading ? (
+            <View style={styles.stateCard}>
+              <ActivityIndicator size="large" color={Colors.secondary} />
+              <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.md }]}>Loading coaches…</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.stateCard}>
+              <Icon name="cloud-off" size={40} color={Colors.outline} />
+              <Text style={[Typography.headlineMd, { marginTop: Spacing.md }]}>Couldn't load coaches</Text>
+              <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>{error}</Text>
+              <TouchableOpacity style={[styles.applyBtn, { alignSelf: 'center', marginTop: Spacing.lg }]} activeOpacity={0.85} onPress={() => loadCoaches({ search: searchQuery, specialty: sport })}>
+                <Text style={styles.applyBtnText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : displayedCards.length === 0 ? (
+            <View style={styles.stateCard}>
+              <Icon name="person-search" size={40} color={Colors.outline} />
+              <Text style={[Typography.headlineMd, { marginTop: Spacing.md }]}>No coaches available yet</Text>
+              <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>
+                Check back soon or try a different search.
+              </Text>
+            </View>
+          ) : (
+            grid(
+              displayedCards.map(c => (
+                <View key={c.id} style={styles.coachCard}>
+                  <View>
+                    {c.img ? (
+                      <Image source={{ uri: c.img }} style={[styles.coachImage, isMd && { height: 256 }]} />
+                    ) : (
+                      <View style={[styles.coachImage, styles.coachImagePlaceholder, isMd && { height: 256 }]}>
+                        <Icon name="person" size={56} color={Colors.onSurfaceVariant} />
                       </View>
-                    ))}
+                    )}
+                    {c.rating && (
+                      <View style={styles.ratingPill}>
+                        <Icon name="star" size={15} color={Colors.secondary} />
+                        <Text style={styles.ratingText}>{c.rating}</Text>
+                      </View>
+                    )}
+                    {(c.specialty || c.name) && (
+                      <View style={styles.nameGradient}>
+                        {c.specialty ? (
+                          <Text style={[Typography.labelCaps, { fontSize: 10, letterSpacing: 2, color: 'rgba(255,255,255,0.85)' }]}>
+                            {c.specialty}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.coachName}>{c.name}</Text>
+                      </View>
+                    )}
                   </View>
-                  <View style={{ flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.base }}>
-                    <TouchableOpacity
-                      style={styles.detailsBtn}
-                      activeOpacity={0.85}
-                      onPress={() => navigation.navigate('CoachProfile')}
-                    >
-                      <Text style={styles.detailsBtnText}>See Details</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.bookBtn} activeOpacity={0.85}>
-                      <Text style={styles.bookBtnText}>Book Consultation</Text>
-                    </TouchableOpacity>
+                  <View style={{ padding: Spacing.md, gap: Spacing.md }}>
+                    {(c.exp || c.price) && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {c.exp ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                            <Icon name="history-edu" size={20} color={Colors.onSurfaceVariant} />
+                            <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, fontSize: 14 }]}>{c.exp}</Text>
+                          </View>
+                        ) : (
+                          <View />
+                        )}
+                        {c.price && (
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                            <Text style={styles.price}>{c.price}</Text>
+                            {!c.price.includes('/') && <Text style={styles.perHour}>/hr</Text>}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                    {c.quote && <Text style={styles.quote}>{c.quote}</Text>}
+                    {c.tags.length > 0 && (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs }}>
+                        {c.tags.map(t => (
+                          <View key={t} style={styles.tagPill}>
+                            <Text style={styles.tagText}>{t.toUpperCase()}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.base }}>
+                      <TouchableOpacity
+                        style={styles.detailsBtn}
+                        activeOpacity={0.85}
+                        onPress={() => navigation.navigate('CoachProfile', { coachId: c.id })}
+                      >
+                        <Text style={styles.detailsBtnText}>See Details</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.bookBtn}
+                        activeOpacity={0.85}
+                        onPress={() => navigation.navigate('CoachProfile', { coachId: c.id })}
+                      >
+                        <Text style={styles.bookBtnText}>Book Consultation</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
-          </View>
+              )),
+              isXL ? 3 : isMd ? 2 : 1,
+              Spacing.gutter
+            )
+          )}
         </View>
 
         {/* Membership Packages */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile, marginTop: Spacing.xl }}>
-          <Text style={Typography.headlineLgMobile}>Membership Packages</Text>
+        <View style={{ marginTop: Spacing.xl }}>
+          <Text style={isMd ? Typography.headlineLg : Typography.headlineLgMobile}>Membership Packages</Text>
           <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>
             Scalable elite performance coaching for every level of professional development.
           </Text>
-          <View style={{ gap: Spacing.md, marginTop: Spacing.lg }}>
-            {PACKAGES.map(p => (
-              <View key={p.label} style={[p.dark ? styles.packageDark : styles.packageLight]}>
+          <View style={{ marginTop: Spacing.lg }}>
+            {grid(
+              PACKAGES.map(p => (
+                <View
+                  key={p.label}
+                  style={[
+                    p.dark ? styles.packageDark : styles.packageLight,
+                    isMd && { padding: Spacing.lg },
+                    p.dark && isMd && { transform: [{ scale: 1.05 }] }
+                  ]}
+                >
                 {p.dark && <View style={styles.packageGlow} />}
                 <Text style={[Typography.labelCaps, { letterSpacing: 3.2, marginBottom: Spacing.md, color: p.dark ? Colors.secondaryFixedDim : Colors.onSurfaceVariant }]}>
                   {p.label}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.lg }}>
-                  <Text style={p.dark ? styles.packagePriceDark : styles.packagePrice}>{p.price}</Text>
+                  <Text
+                    style={[
+                      p.dark ? styles.packagePriceDark : styles.packagePrice,
+                      isMd && { fontSize: 48, lineHeight: 53 }
+                    ]}
+                  >
+                    {p.price}
+                  </Text>
                   <Text style={[Typography.bodyMd, { marginLeft: 4, color: p.dark ? Colors.onPrimaryContainer : Colors.onSurfaceVariant }]}>
                     /month
                   </Text>
@@ -270,10 +366,56 @@ export default function FindCoachScreen({ navigation }: any) {
                   <Text style={[styles.packageBtnText, p.dark ? { color: '#ffffff' } : {}]}>{p.cta}</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+              )),
+              isMd ? 3 : 1,
+              Spacing.md
+            )}
           </View>
         </View>
+        </View>
+        </View>
       </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+function SideNav({ navigation }: any) {
+  const items = [
+    { icon: 'dashboard' as const, label: 'Home', route: 'Home' },
+    { icon: 'analytics' as const, label: 'Analysis', route: null },
+    { icon: 'monitor-heart' as const, label: 'Injuries', route: null },
+    { icon: 'trending-up' as const, label: 'Progress', route: 'Progress' },
+    { icon: 'person-search' as const, label: 'Find Personal Coach', route: null, active: true },
+    { icon: 'admin-panel-settings' as const, label: 'Admin', route: null }
+  ];
+  return (
+    <View style={styles.sideNav}>
+      <View style={{ gap: Spacing.xs, flexGrow: 1 }}>
+        {items.map(item => (
+          <TouchableOpacity
+            key={item.label}
+            disabled={!item.route}
+            onPress={() => item.route && navigation.navigate(item.route)}
+            style={[styles.sideNavItem, item.active && styles.sideNavItemActive]}
+          >
+            <Icon name={item.icon} size={22} color={item.active ? Colors.onSecondaryContainer : Colors.onSurfaceVariant} />
+            <Text style={[Typography.bodyMd, item.active && { color: Colors.onSecondaryContainer, fontWeight: '600' }]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={{ gap: Spacing.xs, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: 'rgba(198,198,205,0.15)' }}>
+        <View style={styles.sideNavItem}>
+          <Icon name="settings" size={22} color={Colors.onSurfaceVariant} />
+          <Text style={Typography.bodyMd}>Settings</Text>
+        </View>
+        <View style={styles.sideNavItem}>
+          <Icon name="help" size={22} color={Colors.onSurfaceVariant} />
+          <Text style={Typography.bodyMd}>Help</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -303,6 +445,24 @@ function OptionSelector({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
+  sideNav: {
+    width: 256,
+    backgroundColor: Colors.surface,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(198,198,205,0.15)',
+    padding: Spacing.md,
+    gap: Spacing.sm
+  },
+  sideNavItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: 8
+  },
+  sideNavItemActive: {
+    backgroundColor: Colors.secondaryContainer
+  },
   header: {
     paddingTop: 44,
     paddingBottom: Spacing.sm,
@@ -328,9 +488,8 @@ const styles = StyleSheet.create({
     width: 160
   },
   headerSearchInput: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 13, color: Colors.onSurface, padding: 0 },
-  heroSection: { paddingHorizontal: Spacing.marginMobile, paddingTop: Spacing.lg },
+  heroSection: { paddingTop: Spacing.lg },
   filterBar: {
-    marginHorizontal: Spacing.marginMobile,
     marginTop: Spacing.lg,
     backgroundColor: Glass.backgroundColor,
     borderWidth: 1,
@@ -407,6 +566,21 @@ const styles = StyleSheet.create({
     elevation: 4
   },
   coachImage: { width: '100%', height: 220 },
+  coachImagePlaceholder: {
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  stateCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(198,198,205,0.2)',
+    borderRadius: 12
+  },
   ratingPill: {
     position: 'absolute',
     top: Spacing.md,

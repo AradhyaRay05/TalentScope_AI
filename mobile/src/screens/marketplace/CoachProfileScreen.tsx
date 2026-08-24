@@ -1,311 +1,423 @@
-import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StatusBar, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+  useWindowDimensions,
+  StyleSheet
+} from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
+import { getCoaches, getCoachById, bookConsultation } from '../../services/api';
 
-const COACH_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBhfEtlsggKfjYoaII9XCY_qnOhJUA719DQhNrClutidTyghFnm2XBlPhjU4uYndIFd6z-hDyj_on1tVSKfiSnZHqD2P46YdkmpG_LEIC_fExzBh5gUox6yKdkwpifUzLkKmTm9jaydeu46yok-m_f5XxlDROr2UYOhyKkx6Pn5XY1Jm3NjEybabfjGqnmMCcVsKlKD6Ls2wymGQ9TiMqWdvwtn0xtvYsx9pbDl2yp55DoCVAFLLVI29KzEnnqjGSEh7SW5Az1yDB4';
+export default function CoachProfileScreen({ navigation, route }: any) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [coach, setCoach] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
-const ATHLETE_AVATARS = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBiUu_Ky7ZhlfrqNIsnEVCnF4cdO4DE_Kh3eP1tMUuPy29hL29tTOZhJLOCyZh9zZTL6AzPpg38RS1i_-GkOoDQ3gVvslUqFDcKd1emRH0IY0WYrehEz6DbQSGZ2PvJJzM0aIg7r6APWj2atao3GXW9e27CnmGGTsKmqxLQjlT0tvxGdU4yVBmFa92-fddo8mUkilP90q81sFRbvGNUTuep-d7mo_Xbse3M1AgECMlA3rDU2fIcSHhT6AW_s9RrYfBmvhEDMPFOaCk',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDXc618l1RV70sewkX02buKL6inYlVInqThMU6AmASdIlJNymrPCU4HSLSz1vgBWlDBBuyfX8eHVXldxZHlNE4K6cGohJFw1j6Jx6mxZVhI_3v-AZ06Yz1cdueW92bNCsgkmzrp1P8tP8sIk57ThX6aNY3sPDkd6exsZJombYF6zzTVNFczI7oOVVGiXEBYTKTxJtl6vfXb3nV4VSMWMf7SzbFl1p5A8NA_Y21qe1TDt-N8RLZyPECAoy_H7i0frkBt7BsqcG0Cbsg',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAdzUPNMOJzIQ2CfClAPIg3toJ3yfgpcS09HgK8d2fX5k1JWEGjJbx4zsKATghiMJSW_8pg11bEr5rasSR8eHe1SIJh4ORnF6-jJTjpDGVKR-LUNCTEUS3eiUf7x5OCAq6mL-fdyj8-mmoP3LDfF7VoM6Oeqex1pMZlWPzqeK8lIFTk_VsUbohSVXt-8ioY2fM4IlPVlalfOKfIOcc8sUCb9tU2kBas9P0Kn5l4pLRQp8F5x9bZO4XRv6HdMzNMbNa484Lnu4W0-c8'
-];
+  const [bookingNotes, setBookingNotes] = useState('');
+  const [bookingDate, setBookingDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
-const EXPERIENCE = [
-  {
-    role: 'Global Performance Lead',
-    period: '2020 — PRESENT | TalentScope AI',
-    body: 'Orchestrating AI-driven training protocols for Top-50 ATP & WTA players.',
-    active: true
-  },
-  {
-    role: 'Senior Biomechanist',
-    period: '2014 — 2020 | Olympic Training Center',
-    body: 'Led the research team focusing on sprinting mechanics and lactic threshold optimization.',
-    active: false
+  const coachId: string | undefined = route?.params?.coachId;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    setNotFound(false);
+    try {
+      let data: any = null;
+      if (coachId) {
+        const res = await getCoachById(coachId);
+        data = res?.data || null;
+      } else {
+        const res = await getCoaches();
+        const list = Array.isArray(res?.data) ? res.data : [];
+        data = list[0] || null;
+      }
+      if (data) {
+        setCoach(data);
+      } else {
+        setCoach(null);
+        setNotFound(true);
+      }
+    } catch (e: any) {
+      setCoach(null);
+      setLoadError(e?.message || 'Failed to load coach profile');
+    } finally {
+      setLoading(false);
+    }
+  }, [coachId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
+  const padH = isMd ? Spacing.marginDesktop : Spacing.marginMobile;
+  const container = { alignSelf: 'center' as const, width: '100%' as const, maxWidth: 1440 };
+
+  const submitBooking = async () => {
+    if (!coach?._id || submitting) return;
+    setSubmitting(true);
+    setBookingError(null);
+    setBookingSuccess(null);
+    try {
+      await bookConsultation({
+        coachId: coach._id,
+        athleteNotes: bookingNotes.trim() || undefined,
+        scheduledDate: bookingDate.trim() ? bookingDate.trim() : null
+      });
+      setBookingSuccess(`Request sent to ${coach.name}`);
+      setBookingNotes('');
+      setBookingDate('');
+    } catch (e: any) {
+      setBookingError(e?.message || 'Failed to send booking request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <StatusBar />
+        <ProfileHeader navigation={navigation} avatarUri={null} />
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={Colors.secondary} />
+          <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.md }]}>Loading profile…</Text>
+        </View>
+      </View>
+    );
   }
-];
 
-const STORIES = [
-  {
-    icon: 'trending-up' as const,
-    title: '14% Power Increase',
-    quote:
-      '"Through Marcus\'s AI protocols, we identified a 3-degree ankle misalignment that was leaking power. Within 4 months, my explosive power output reached career highs."',
-    author: '— Pro Decathlete'
-  },
-  {
-    icon: 'monitor-heart' as const,
-    title: 'Injury Free for 24 Months',
-    quote:
-      '"Marcus\'s predictive modeling completely changed my approach to load management. We now know exactly when to push and when to de-load."',
-    author: '— Elite Marathon Runner'
+  if (notFound || !coach) {
+    return (
+      <View style={styles.root}>
+        <StatusBar />
+        <ProfileHeader navigation={navigation} avatarUri={null} />
+        <View style={[styles.centerState, { paddingHorizontal: padH }]}>
+          <View style={[Glass, styles.stateCard]}>
+            <Icon name="person-search" size={40} color={Colors.outline} />
+            <Text style={[Typography.headlineMd, { marginTop: Spacing.md }]}>No coach available</Text>
+            <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>
+              We couldn't find this coach's profile.
+            </Text>
+            <TouchableOpacity style={styles.retryBtn} activeOpacity={0.85} onPress={() => navigation.goBack()}>
+              <Text style={styles.retryBtnText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
   }
-];
 
-const CERTIFICATIONS = ['CSCS® EXCELLENCE', 'NASM PES', 'AI DATA ETHICS', 'MSC BIOMECHANICS'];
-
-const REVIEWS = [
-  {
-    stars: 5,
-    text: '"Marcus doesn\'t just coach; he engineer\'s human performance. The TalentScope integration is seamless."',
-    name: 'Sarah Jenkins',
-    role: 'ULTRA MARATHONER'
-  },
-  {
-    stars: 4.5,
-    text: '"Elite-tier insights. We\'ve optimized my recovery cycles by 22% using Marcus\'s dashboard."',
-    name: 'David Chen',
-    role: 'PRO TENNIS'
-  },
-  {
-    stars: 5,
-    text: '"The best investment in my career. The data visualizations make complex science easy to act on."',
-    name: 'Elena Rodriguez',
-    role: 'NATIONAL TEAM COACH'
+  if (loadError) {
+    return (
+      <View style={styles.root}>
+        <StatusBar />
+        <ProfileHeader navigation={navigation} avatarUri={null} />
+        <View style={[styles.centerState, { paddingHorizontal: padH }]}>
+          <View style={[Glass, styles.stateCard]}>
+            <Icon name="cloud-off" size={40} color={Colors.outline} />
+            <Text style={[Typography.headlineMd, { marginTop: Spacing.md }]}>Couldn't load profile</Text>
+            <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.xs }]}>{loadError}</Text>
+            <TouchableOpacity style={styles.retryBtn} activeOpacity={0.85} onPress={load}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
   }
-];
 
-const WEEK_DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const CALENDAR_DATES = [
-  { day: 28, state: 'muted' },
-  { day: 29, state: 'muted' },
-  { day: 30, state: 'muted' },
-  { day: 1, state: 'available' },
-  { day: 2, state: 'selected' },
-  { day: 3, state: 'available' },
-  { day: 4, state: 'available' }
-];
+  const photoUri = typeof coach.avatar === 'string' && coach.avatar ? coach.avatar : null;
+  const title = coach.title || '';
+  const rating = coach.rating != null ? String(coach.rating) : null;
+  const reviewsCount = coach.reviewsCount != null && coach.reviewsCount > 0 ? String(coach.reviewsCount) : null;
+  const experienceYears = coach.experienceYears != null ? `${coach.experienceYears}+ Years Experience` : null;
+  const affiliation = coach.affiliation || null;
+  const bio = coach.bio || null;
+  const credentials = Array.isArray(coach.credentials) ? coach.credentials.filter(Boolean) : [];
+  const specialties = Array.isArray(coach.specialties) ? coach.specialties.filter(Boolean) : [];
+  const hourlyRate = coach.hourlyRate != null && coach.hourlyRate !== '' ? String(coach.hourlyRate) : null;
 
-export default function CoachProfileScreen({ navigation }: any) {
-  const [selectedDate, setSelectedDate] = useState(2);
+  const photoBlock = (
+    <View style={[styles.heroPhotoWrap, isLg && { width: '100%' }]}>
+      {photoUri ? (
+        <Image source={{ uri: photoUri }} style={styles.heroPhoto} />
+      ) : (
+        <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
+          <Icon name="person" size={72} color={Colors.onSurfaceVariant} />
+        </View>
+      )}
+      {coach.verified && (
+        <View style={[styles.eliteBadge, isLg && { bottom: -16, right: -16 }]}>
+          <Icon name="verified" size={14} color={Colors.onSecondaryContainer} />
+          <Text style={styles.eliteBadgeText}>VERIFIED COACH</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const infoBlock = (
+    <>
+      {title ? (
+        <Text style={[Typography.labelCaps, { fontSize: 11, letterSpacing: 2.4, color: Colors.secondary }]}>
+          {title.toUpperCase()}
+        </Text>
+      ) : null}
+      <Text style={[Typography.displayHero, !isLg && { fontSize: 34, lineHeight: 40, letterSpacing: -1.4 }, !isLg && { marginTop: 4 }]}>
+        {coach.name}
+      </Text>
+      {(affiliation || rating || experienceYears) && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.base }}>
+          {affiliation && <MetaChip icon="location-on" text={affiliation} />}
+          {rating && <MetaChip icon="star" text={rating} bold suffix={reviewsCount ? `(${reviewsCount} Reviews)` : undefined} />}
+          {experienceYears && <MetaChip icon="workspace-premium" text={experienceYears} />}
+        </View>
+      )}
+      {bio && (
+        <Text
+          style={[
+            Typography.bodyLg,
+            { color: Colors.onSurfaceVariant, marginTop: Spacing.md },
+            isLg ? { maxWidth: 672 } : { fontSize: 16, lineHeight: 25 }
+          ]}
+        >
+          {bio}
+        </Text>
+      )}
+      {specialties.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md }}>
+          {specialties.slice(0, 4).map(s => (
+            <View key={s} style={styles.certChip}>
+              <Text style={styles.certChipText}>{s.toUpperCase()}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.lg }}>
+        <TouchableOpacity style={styles.bookAssessmentBtn} activeOpacity={0.85} onPress={() => submitBooking()} disabled={submitting}>
+          {submitting ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <>
+              <Text style={styles.bookAssessmentText}>Book Assessment</Text>
+              <Icon name="calendar-today" size={18} color="#ffffff" />
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.portfolioBtn}
+          activeOpacity={0.85}
+          onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        >
+          <Text style={styles.portfolioText}>Book Consultation</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  const bioCard = bio ? (
+    <SectionCard label="BIOGRAPHY">
+      <Text style={styles.proseParagraph}>{bio}</Text>
+    </SectionCard>
+  ) : null;
+
+  const experienceCard =
+    Array.isArray(coach.experience) && coach.experience.length > 0 ? (
+      <SectionCard label="PROFESSIONAL EXPERIENCE">
+        <View style={{ gap: Spacing.md }}>
+          {coach.experience.map((e: any, i: number) => (
+            <View key={`${e.role}-${i}`} style={{ flexDirection: 'row', gap: Spacing.md }}>
+              <View style={{ alignItems: 'center' }}>
+                <View style={[styles.timelineDot, i === 0 && styles.timelineDotActive]} />
+                <View style={styles.timelineLine} />
+              </View>
+              <View style={{ flex: 1, paddingBottom: Spacing.sm }}>
+                <Text style={styles.timelineRole}>{e.role}</Text>
+                {e.period ? (
+                  <Text style={[Typography.labelCaps, { fontSize: 10, color: Colors.secondary, marginTop: 4 }]}>
+                    {String(e.period).toUpperCase()}
+                  </Text>
+                ) : null}
+                {e.body ? (
+                  <Text style={[Typography.bodyMd, { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: Spacing.sm }]}>
+                    {e.body}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      </SectionCard>
+    ) : null;
+
+  const bookingCard = (
+    <View style={styles.bookingCard}>
+      <Text style={[Typography.labelCaps, { color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.md }]}>BOOK A CONSULTATION</Text>
+      {hourlyRate && (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: Spacing.md }}>
+          <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 26, fontWeight: '700', color: '#ffffff' }}>{hourlyRate}</Text>
+          {!hourlyRate.includes('/') && <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginLeft: 4 }}>/hr</Text>}
+        </View>
+      )}
+      <TextInput
+        value={bookingDate}
+        onChangeText={setBookingDate}
+        placeholder="Preferred date (YYYY-MM-DD)"
+        placeholderTextColor="rgba(255,255,255,0.5)"
+        style={styles.bookingInput}
+      />
+      <TextInput
+        value={bookingNotes}
+        onChangeText={setBookingNotes}
+        placeholder="Notes for the coach (goals, injuries, availability)…"
+        placeholderTextColor="rgba(255,255,255,0.5)"
+        multiline
+        numberOfLines={3}
+        style={[styles.bookingInput, { height: 80, paddingTop: Spacing.base, textAlignVertical: 'top' }]}
+      />
+      {bookingSuccess && (
+        <View style={styles.bookingFeedbackRow}>
+          <Icon name="check-circle" size={16} color="#8FF0A4" />
+          <Text style={[styles.slotNote, { marginTop: 0, flex: 1, textAlign: 'left', color: '#8FF0A4' }]}>{bookingSuccess}</Text>
+        </View>
+      )}
+      {bookingError && (
+        <View style={styles.bookingFeedbackRow}>
+          <Icon name="error-outline" size={16} color="#FFB4AB" />
+          <Text style={[styles.slotNote, { marginTop: 0, flex: 1, textAlign: 'left', color: '#FFB4AB' }]}>{bookingError}</Text>
+        </View>
+      )}
+      <TouchableOpacity
+        style={[styles.sessionBtn, submitting && { opacity: 0.6 }]}
+        activeOpacity={0.85}
+        onPress={submitBooking}
+        disabled={submitting}
+      >
+        {submitting ? (
+          <ActivityIndicator size="small" color={Colors.onSecondary} />
+        ) : (
+          <Text style={styles.sessionBtnText}>{bookingSuccess ? 'Request Sent' : 'Request Booking'}</Text>
+        )}
+      </TouchableOpacity>
+      <Text style={styles.slotNote}>The coach will confirm your requested slot.</Text>
+    </View>
+  );
+
+  const pricingCard = hourlyRate ? (
+    <SectionCard label="PRICING">
+      <View style={styles.pricingRowWrap}>
+        <View style={styles.pricingRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={Typography.headlineMd}>1-on-1 Consultation</Text>
+            <Text style={styles.pricingNote}>Direct consultation request with {coach.name}.</Text>
+          </View>
+          <Text style={styles.pricingValue}>{hourlyRate}</Text>
+        </View>
+      </View>
+    </SectionCard>
+  ) : null;
+
+  const certificationsCard =
+    credentials.length > 0 ? (
+      <SectionCard label="CERTIFICATIONS">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
+          {credentials.map(cert => (
+            <View key={cert} style={styles.certChip}>
+              <Text style={styles.certChipText}>{cert.toUpperCase()}</Text>
+            </View>
+          ))}
+        </View>
+      </SectionCard>
+    ) : null;
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.brand}>TalentScope AI</Text>
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={18} color={Colors.onSurfaceVariant} />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-        </View>
-        <Image source={{ uri: COACH_IMG }} style={styles.headerAvatar} />
-      </View>
-
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {/* Hero */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile, paddingTop: Spacing.lg, flexDirection: 'row', gap: Spacing.md }}>
-          <View style={styles.heroPhotoWrap}>
-            <Image source={{ uri: COACH_IMG }} style={styles.heroPhoto} />
-            <View style={styles.eliteBadge}>
-              <Icon name="verified" size={14} color={Colors.onSecondaryContainer} />
-              <Text style={styles.eliteBadgeText}>ELITE TIER</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={{ paddingHorizontal: Spacing.marginMobile, marginTop: Spacing.md }}>
-          <Text style={[Typography.labelCaps, { fontSize: 11, letterSpacing: 2.4, color: Colors.secondary }]}>
-            LEAD PERFORMANCE SPECIALIST
-          </Text>
-          <Text style={[Typography.displayHero, { fontSize: 34, lineHeight: 40, letterSpacing: -1.4, marginTop: 4 }]}>
-            Marcus Vanhouten
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.base }}>
-            <MetaChip icon="location-on" text="Zurich, Switzerland" />
-            <MetaChip icon="star" text="4.9" bold suffix="(128 Reviews)" />
-            <MetaChip icon="workspace-premium" text="15+ Years Experience" />
-          </View>
-          <Text style={[Typography.bodyLg, { fontSize: 16, lineHeight: 25, color: Colors.onSurfaceVariant, marginTop: Spacing.md }]}>
-            Pioneering the intersection of biomechanical data analysis and elite human performance. I help Olympic-level
-            athletes unlock marginal gains through TalentScope AI's predictive modeling.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.lg }}>
-            <TouchableOpacity style={styles.bookAssessmentBtn} activeOpacity={0.85}>
-              <Text style={styles.bookAssessmentText}>Book Assessment</Text>
-              <Icon name="calendar-today" size={18} color="#ffffff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.portfolioBtn} activeOpacity={0.85}>
-              <Text style={styles.portfolioText}>View Portfolio</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Biography + Experience + Stories */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile, marginTop: Spacing.xl, gap: Spacing.gutter }}>
-          <SectionCard label="BIOGRAPHY">
-            <Text style={styles.proseParagraph}>
-              Marcus specializes in high-velocity mechanics and recovery optimization. Having spent a decade as the Lead
-              Sports Scientist for European Athletics, he transitioned to TalentScope AI to leverage neural networks in
-              predicting injury risks before they manifest.
-            </Text>
-            <Text style={[styles.proseParagraph, { marginTop: Spacing.base }]}>
-              His philosophy centers on "The Precision Index"—a data-driven approach where every micro-movement is
-              analyzed, cataloged, and optimized for maximum output with minimum metabolic cost.
-            </Text>
-          </SectionCard>
-
-          <SectionCard label="PROFESSIONAL EXPERIENCE">
-            <View style={{ gap: Spacing.md }}>
-              {EXPERIENCE.map(e => (
-                <View key={e.role} style={{ flexDirection: 'row', gap: Spacing.md }}>
-                  <View style={{ alignItems: 'center' }}>
-                    <View style={[styles.timelineDot, e.active && styles.timelineDotActive]} />
-                    <View style={styles.timelineLine} />
-                  </View>
-                  <View style={{ flex: 1, paddingBottom: Spacing.sm }}>
-                    <Text style={styles.timelineRole}>{e.role}</Text>
-                    <Text style={[Typography.labelCaps, { fontSize: 10, color: Colors.secondary, marginTop: 4 }]}>{e.period}</Text>
-                    <Text style={[Typography.bodyMd, { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: Spacing.sm }]}>
-                      {e.body}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </SectionCard>
-
-          <View>
-            <Text style={styles.sectionLabel}>SUCCESS STORIES</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.base }}>
-              {STORIES.map(s => (
-                <View key={s.title} style={styles.storyCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.base }}>
-                    <View style={styles.storyIconBox}>
-                      <Icon name={s.icon} size={20} color={Colors.secondary} />
-                    </View>
-                    <Text style={Typography.headlineMd}>{s.title}</Text>
-                  </View>
-                  <Text style={styles.storyQuote}>{s.quote}</Text>
-                  <Text style={styles.storyAuthor}>{s.author}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        {/* Booking Sidebar */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile, marginTop: Spacing.gutter, gap: Spacing.gutter }}>
-          <View style={styles.bookingCard}>
-            <Text style={[Typography.labelCaps, { color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.md }]}>
-              BOOK ASSESSMENT
-            </Text>
-            <View style={styles.calendarWeekRow}>
-              {WEEK_DAYS.map((d, i) => (
-                <Text key={`wd-${i}`} style={styles.calendarDayLabel}>
-                  {d}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calendarDatesRow}>
-              {CALENDAR_DATES.map(c => (
-                <TouchableOpacity
-                  key={c.day}
-                  disabled={c.state === 'muted'}
-                  onPress={() => setSelectedDate(c.day)}
-                  style={[
-                    styles.dateCell,
-                    c.state === 'muted' && styles.dateCellMuted,
-                    c.state === 'available' && selectedDate !== c.day && styles.dateCellAvailable,
-                    selectedDate === c.day && styles.dateCellSelected
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dateCellText,
-                      selectedDate === c.day && styles.dateCellTextSelected,
-                      c.state === 'muted' && styles.dateCellTextMuted
-                    ]}
-                  >
-                    {c.day}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.sessionBtn} activeOpacity={0.85}>
-              <Text style={styles.sessionBtnText}>Select 14:00 Session</Text>
-            </TouchableOpacity>
-            <Text style={styles.slotNote}>Next available slot: Oct 2nd, 2024</Text>
-          </View>
-
-          <SectionCard label="PRICING TIERS">
-            <View style={styles.pricingRowWrap}>
-              <View style={styles.pricingRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={Typography.headlineMd}>Single Analysis</Text>
-                  <Text style={styles.pricingNote}>Deep dive biomechanical assessment with AI report.</Text>
-                </View>
-                <Text style={styles.pricingValue}>$249</Text>
+      <StatusBar />
+      <ProfileHeader navigation={navigation} avatarUri={photoUri} />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: isLg ? Spacing.xl : 120 }} showsVerticalScrollIndicator={false}>
+        <View style={{ paddingHorizontal: padH }}>
+          <View style={container}>
+            {/* Hero */}
+            {isLg ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.gutter, paddingVertical: Spacing.xl }}>
+                <View style={{ flex: 4 }}>{photoBlock}</View>
+                <View style={{ flex: 8 }}>{infoBlock}</View>
               </View>
-              <View style={styles.pricingDivider} />
-              <View style={styles.pricingRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[Typography.headlineMd, { color: Colors.secondary }]}>Elite Monthly</Text>
-                  <Text style={styles.pricingNote}>Full-time load management, 24/7 AI monitoring, and weekly calls.</Text>
-                </View>
-                <Text style={[styles.pricingValue, { color: Colors.secondary }]}>$899</Text>
-              </View>
-            </View>
-          </SectionCard>
+            ) : (
+              <>
+                <View style={{ paddingTop: Spacing.lg, flexDirection: 'row', gap: Spacing.md }}>{photoBlock}</View>
+                <View style={{ marginTop: Spacing.md }}>{infoBlock}</View>
+              </>
+            )}
 
-          <SectionCard label="CERTIFICATIONS">
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-              {CERTIFICATIONS.map(cert => (
-                <View key={cert} style={styles.certChip}>
-                  <Text style={styles.certChipText}>{cert}</Text>
+            {/* Bento Grid */}
+            {isLg ? (
+              <View style={{ flexDirection: 'row', gap: Spacing.gutter, marginTop: Spacing.lg, alignItems: 'flex-start' }}>
+                <View style={{ flex: 8, gap: Spacing.gutter }}>
+                  {bioCard}
+                  {experienceCard}
                 </View>
-              ))}
-            </View>
-          </SectionCard>
-
-          <SectionCard label="NOTABLE ATHLETES">
-            <View style={styles.athletesRow}>
-              {ATHLETE_AVATARS.map((uri, i) => (
-                <Image key={uri.slice(-12)} source={{ uri }} style={[styles.athleteAvatar, i > 0 && styles.athleteAvatarOverlap]} />
-              ))}
-              <View style={[styles.moreAthletesChip, styles.athleteAvatarOverlap]}>
-                <Text style={styles.moreAthletesText}>+42</Text>
-              </View>
-            </View>
-            <Text style={styles.notableNote}>Includes 3 World Record holders and 12 Olympic Medallists.</Text>
-          </SectionCard>
-        </View>
-
-        {/* Reviews */}
-        <View style={{ paddingHorizontal: Spacing.marginMobile, marginTop: Spacing.xl }}>
-          <Text style={styles.sectionLabel}>TRUSTED BY THE BEST</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.base }}>
-            {REVIEWS.map(r => (
-              <View key={r.name} style={[Glass, styles.reviewCard, r.stars === 5 && { borderLeftWidth: 4, borderLeftColor: Colors.secondary }]}>
-                <View style={{ flexDirection: 'row', gap: 2, marginBottom: Spacing.sm }}>
-                  {[1, 2, 3, 4, 5].map(n => (
-                    <Icon
-                      key={n}
-                      name="star"
-                      size={15}
-                      color={Colors.secondary}
-                      style={n > Math.floor(r.stars) ? { opacity: r.stars % 1 >= 0.5 ? 0.45 : 0.2 } : {}}
-                    />
-                  ))}
-                </View>
-                <Text style={styles.reviewText}>{r.text}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md }}>
-                  <View style={styles.reviewerAvatar} />
-                  <View>
-                    <Text style={styles.reviewerName}>{r.name}</Text>
-                    <Text style={styles.reviewerRole}>{r.role}</Text>
-                  </View>
+                <View style={{ flex: 4, gap: Spacing.gutter }}>
+                  {bookingCard}
+                  {pricingCard}
+                  {certificationsCard}
                 </View>
               </View>
-            ))}
+            ) : (
+              <>
+                <View style={{ marginTop: Spacing.xl, gap: Spacing.gutter }}>
+                  {bioCard}
+                  {experienceCard}
+                </View>
+                <View style={{ marginTop: Spacing.gutter, gap: Spacing.gutter }}>
+                  {bookingCard}
+                  {pricingCard}
+                  {certificationsCard}
+                </View>
+              </>
+            )}
           </View>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function ProfileHeader({ navigation, avatarUri }: { navigation: any; avatarUri: string | null }) {
+  return (
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.brand}>TalentScope AI</Text>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={18} color={Colors.onSurfaceVariant} />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+      {avatarUri ? (
+        <Image source={{ uri: avatarUri }} style={styles.headerAvatar} />
+      ) : (
+        <View style={[styles.headerAvatar, styles.headerAvatarPlaceholder]}>
+          <Icon name="person" size={22} color={Colors.onSurfaceVariant} />
+        </View>
+      )}
     </View>
   );
 }
@@ -347,8 +459,28 @@ const styles = StyleSheet.create({
   brand: { ...Typography.headlineMd, letterSpacing: -0.8, color: Colors.primary },
   backText: { fontFamily: 'Inter_500Medium', fontSize: 14, fontWeight: '500', color: Colors.onSurfaceVariant },
   headerAvatar: { width: 40, height: 40, borderRadius: 20 },
+  headerAvatarPlaceholder: {
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  stateCard: { borderRadius: 12, padding: Spacing.lg, alignItems: 'center', width: '100%', maxWidth: 420 },
+  retryBtn: {
+    backgroundColor: Colors.secondary,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.base,
+    marginTop: Spacing.lg
+  },
+  retryBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 15, fontWeight: '600', color: Colors.onSecondary },
   heroPhotoWrap: { width: '55%' },
   heroPhoto: { aspectRatio: 1, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(198,198,205,0.2)' },
+  heroPhotoPlaceholder: {
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   eliteBadge: {
     position: 'absolute',
     bottom: -12,
@@ -374,25 +506,6 @@ const styles = StyleSheet.create({
   timelineDotActive: { backgroundColor: Colors.secondary, shadowColor: Colors.secondary, shadowOpacity: 0.25, shadowRadius: 6 },
   timelineLine: { width: 1, flex: 1, minHeight: 48, backgroundColor: 'rgba(198,198,205,0.35)', marginVertical: 4 },
   timelineRole: { ...Typography.headlineMd, fontSize: 19, lineHeight: 25 },
-  storyCard: {
-    width: '100%',
-    flexGrow: 1,
-    backgroundColor: Colors.surfaceContainerLow,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(198,198,205,0.2)',
-    padding: Spacing.md
-  },
-  storyIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,104,122,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  storyQuote: { ...Typography.bodyMd, fontSize: 14, lineHeight: 21, color: Colors.onSurfaceVariant },
-  storyAuthor: { ...Typography.labelCaps, fontSize: 10, marginTop: Spacing.md, opacity: 0.6 },
   bookingCard: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
@@ -403,22 +516,20 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8
   },
-  calendarWeekRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.sm },
-  calendarDayLabel: { flex: 1, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.4)' },
-  calendarDatesRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
-  dateCell: {
-    flex: 1,
-    height: 32,
+  bookingInput: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center'
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.base,
+    marginBottom: Spacing.md,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: '#ffffff'
   },
-  dateCellMuted: { opacity: 0.2 },
-  dateCellAvailable: { backgroundColor: 'rgba(255,255,255,0.1)' },
-  dateCellSelected: { backgroundColor: Colors.secondary },
-  dateCellText: { fontSize: 13, color: '#ffffff' },
-  dateCellTextSelected: { fontFamily: 'Inter_700Bold', fontWeight: '700' },
-  dateCellTextMuted: { color: 'rgba(255,255,255,0.5)' },
+  bookingFeedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.md },
   sessionBtn: {
     width: '100%',
     backgroundColor: Colors.secondary,
@@ -431,7 +542,6 @@ const styles = StyleSheet.create({
   slotNote: { textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: Spacing.sm },
   pricingRowWrap: {},
   pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
-  pricingDivider: { borderTopWidth: 1, borderTopColor: 'rgba(198,198,205,0.2)', marginVertical: Spacing.md },
   pricingNote: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 4 },
   pricingValue: { ...Typography.headlineMd, fontSize: 20, lineHeight: 26, fontFamily: 'Geist_600SemiBold', fontWeight: '700' },
   certChip: {
@@ -443,30 +553,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,198,205,0.2)'
   },
   certChipText: { fontSize: 12, fontFamily: 'Inter_700Bold', fontWeight: '700' },
-  athletesRow: { flexDirection: 'row', alignItems: 'center' },
-  athleteAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#ffffff'
-  },
-  athleteAvatarOverlap: { marginLeft: -12 },
-  moreAthletesChip: {
-    backgroundColor: Colors.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#ffffff'
-  },
-  moreAthletesText: { fontSize: 10, fontFamily: 'Inter_700Bold', fontWeight: '700' },
-  notableNote: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: Spacing.sm },
-  reviewCard: { width: '100%', flexGrow: 1, borderRadius: 12, padding: Spacing.md },
-  reviewText: { ...Typography.bodyMd, fontStyle: 'italic', fontSize: 14, lineHeight: 21 },
-  reviewerAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.surfaceContainerHighest },
-  reviewerName: { fontFamily: 'Inter_700Bold', fontSize: 14, fontWeight: '700' },
-  reviewerRole: { ...Typography.labelCaps, fontSize: 10, opacity: 0.5 },
   bookAssessmentBtn: {
     flex: 1,
     flexDirection: 'row',

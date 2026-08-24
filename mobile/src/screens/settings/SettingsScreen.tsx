@@ -6,19 +6,32 @@ import {
   TouchableOpacity,
   Switch,
   ScrollView,
-  StyleSheet
+  TextInput,
+  StyleSheet,
+  useWindowDimensions
 } from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '../../theme/colors';
-import { getProfile } from '../../services/api';
+import { DesktopSideNav } from '../dashboard/AthleteDashboardScreen';
+import { getProfile, updateAthleteProfile } from '../../services/api';
+import { clearSession } from '../../services/session';
 
-const PROFILE_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB4GB9SlvlVBkom21qGdHYDAFRRnXKQ3ZBXFu61OonF3USwm9YhE8dIygCqSkd0PK-ZBDdWwCPzMy52ILzK8QUuaWFqO1_cOr1aKkZWL-hDhnAR-Qh-cn1JJLeCOBAtPcVh6QHmZwfzmiBce5iYjFdMmzFsC6yLkrIZeS0GmdQoeaZ5vx0QKh85pAo_1diLeu1qrIpfmQQXT6QFhzFW7URNrGTPjxt3gkzImp4wgKebBF_4xLUGEFVAlwEQ0MnZuISrB_KEIm3Z-Gk';
+interface ProfileForm {
+  name: string;
+  phone: string;
+  age: string;
+  weight: string;
+  height: string;
+  primarySport: string;
+}
 
 const LANGUAGES = ['English (United States)', 'German (Germany)', 'French (France)', 'Spanish (Spain)'];
 const TIMEZONES = ['GMT -5:00 (Eastern Time)', 'GMT +0:00 (London)', 'GMT +1:00 (Berlin)'];
 
 export default function SettingsScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
   const [darkMode, setDarkMode] = useState(false);
   const [compactView, setCompactView] = useState(false);
   const [emailReports, setEmailReports] = useState(true);
@@ -27,6 +40,18 @@ export default function SettingsScreen({ navigation }: any) {
   const [language, setLanguage] = useState(LANGUAGES[0]);
   const [timezone, setTimezone] = useState(TIMEZONES[0]);
   const [profile, setProfile] = useState<any>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [form, setForm] = useState<ProfileForm>({
+    name: '',
+    phone: '',
+    age: '',
+    weight: '',
+    height: '',
+    primarySport: ''
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -35,7 +60,7 @@ export default function SettingsScreen({ navigation }: any) {
         const res = await getProfile();
         if (mounted) setProfile(res?.user || res?.data || null);
       } catch {
-        // offline — keep static display values
+        if (mounted) setProfile(null);
       }
     })();
     return () => {
@@ -43,61 +68,239 @@ export default function SettingsScreen({ navigation }: any) {
     };
   }, []);
 
-  const fullName = profile?.name || 'Felix Vanderwaal';
-  const email = profile?.email || 'f.vanderwaal@performance.ai';
-  const specialization = profile?.specialization || 'Sprinting & Biometrics';
-  const affiliation = profile?.affiliation || 'Elite Track Global';
-  const plan = profile?.tier || 'Elite Professional';
+  const fullName = profile?.name ? String(profile.name) : '--';
+  const email = profile?.email ? String(profile.email) : '--';
+  const phone = profile?.phone ? String(profile.phone) : '--';
+  const specialization = profile?.specialization ? String(profile.specialization) : '--';
+  const affiliation = profile?.affiliation ? String(profile.affiliation) : '--';
+  const plan = profile?.tier ? String(profile.tier) : '--';
+  const ageValue = profile?.age != null ? String(profile.age) : '--';
+  const weightValue = profile?.weight != null ? `${profile.weight} kg` : '--';
+  const heightValue = profile?.height != null ? `${profile.height} cm` : '--';
+  const primarySportValue = profile?.primarySport ? String(profile.primarySport) : '--';
+  const avatarUri: string | null = profile?.avatar || null;
+
+  const startEdit = () => {
+    setForm({
+      name: profile?.name ? String(profile.name) : '',
+      phone: profile?.phone ? String(profile.phone) : '',
+      age: profile?.age != null ? String(profile.age) : '',
+      weight: profile?.weight != null ? String(profile.weight) : '',
+      height: profile?.height != null ? String(profile.height) : '',
+      primarySport: profile?.primarySport ? String(profile.primarySport) : ''
+    });
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const saveProfile = async () => {
+    const payload: Record<string, unknown> = {};
+    const name = form.name.trim();
+    if (name && name !== fullName) payload.name = name;
+    const age = parseInt(form.age, 10);
+    if (!Number.isNaN(age) && age !== profile?.age) payload.age = age;
+    const weight = parseFloat(form.weight);
+    if (!Number.isNaN(weight) && weight !== profile?.weight) payload.weight = weight;
+    const height = parseFloat(form.height);
+    if (!Number.isNaN(height) && height !== profile?.height) payload.height = height;
+    const sport = form.primarySport.trim();
+    if (sport && sport !== primarySportValue) payload.primarySport = sport;
+
+    if (Object.keys(payload).length === 0) {
+      setEditing(false);
+      setSuccessMsg('No changes to save');
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const res = await updateAthleteProfile(payload);
+      const updatedUser = res?.user || res?.data || null;
+      if (updatedUser) {
+        setProfile(updatedUser);
+      } else {
+        setProfile((prev: any) => ({ ...prev, ...payload }));
+      }
+      setEditing(false);
+      setSuccessMsg('Profile updated');
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await clearSession();
+    navigation.reset({ index: 0, routes: [{ name: 'Landing' }] });
+  };
+
+  const EDITABLE_KEYS = ['name', 'age', 'weight', 'height', 'primarySport'];
+  const NUMERIC_KEYS = ['age', 'weight', 'height'];
+
+  const PROFILE_FIELDS = [
+    { key: 'name', label: 'FULL NAME', value: fullName },
+    { key: 'email', label: 'EMAIL ADDRESS', value: email },
+    { key: 'phone', label: 'PHONE NUMBER', value: phone },
+    { key: 'age', label: 'AGE', value: ageValue },
+    { key: 'weight', label: 'WEIGHT (KG)', value: weightValue },
+    { key: 'height', label: 'HEIGHT (CM)', value: heightValue },
+    { key: 'primarySport', label: 'PRIMARY SPORT', value: primarySportValue },
+    { key: 'specialization', label: 'SPECIALIZATION', value: specialization },
+    { key: 'affiliation', label: 'AFFILIATION', value: affiliation }
+  ];
+
+  const renderField = (field: { key: string; label: string; value: string }) => {
+    if (!editing || !EDITABLE_KEYS.includes(field.key)) {
+      return <ProfileField label={field.label} value={field.value} />;
+    }
+    const formKey = field.key as keyof ProfileForm;
+    return (
+      <View>
+        <Text style={styles.fieldLabel}>{field.label}</Text>
+        <TextInput
+          style={[styles.input, saving && { opacity: 0.6 }]}
+          value={form[formKey]}
+          onChangeText={(text) => setForm((prev) => ({ ...prev, [formKey]: text }))}
+          placeholder={field.value === '--' ? '' : field.value}
+          placeholderTextColor={Colors.outline}
+          keyboardType={NUMERIC_KEYS.includes(field.key) ? 'numeric' : 'default'}
+          editable={!saving}
+        />
+      </View>
+    );
+  };
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }} onPress={() => navigation.goBack()}>
-          <Icon name="notifications" size={22} color={Colors.onSurface} />
-          <Image source={{ uri: PROFILE_IMG }} style={styles.headerAvatar} />
-        </TouchableOpacity>
-      </View>
+      {isLg && (
+        <View style={styles.desktopHeader}>
+          <Text style={styles.desktopBrand}>TalentScope AI</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <TouchableOpacity style={styles.desktopBell}>
+              <Icon name="notifications" size={22} color={Colors.onSurface} />
+            </TouchableOpacity>
+            <Avatar uri={avatarUri} size={32} />
+          </View>
+        </View>
+      )}
+      {!isLg && (
+        <View style={styles.header}>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }} onPress={() => navigation.goBack()}>
+            <Icon name="notifications" size={22} color={Colors.onSurface} />
+            <Avatar uri={avatarUri} size={32} />
+          </TouchableOpacity>
+        </View>
+      )}
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        <View style={styles.pageHeader}>
-          <Text style={[Typography.headlineLgMobile, { color: Colors.primary, marginBottom: Spacing.xs }]}>Settings</Text>
+      {isLg && <DesktopSideNav navigation={navigation} activeKey="settings" showBack />}
+
+      <ScrollView contentContainerStyle={{ paddingBottom: isLg ? Spacing.xl : 120, marginLeft: isLg ? 256 : 0 }} showsVerticalScrollIndicator={false}>
+        <View
+          style={[
+            styles.pageHeader,
+            isMd && { paddingHorizontal: Spacing.marginDesktop },
+            isLg && { paddingTop: 96 }
+          ]}
+        >
+          <Text
+            style={[
+              isMd ? Typography.headlineLg : Typography.headlineLgMobile,
+              { color: Colors.primary, marginBottom: Spacing.xs }
+            ]}
+          >
+            Settings
+          </Text>
           <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant }]}>
             Manage your elite performance profile and account preferences.
           </Text>
         </View>
 
-        <View style={{ paddingHorizontal: Spacing.marginMobile, gap: Spacing.gutter }}>
-          {/* Profile Settings */}
-          <SettingsCard>
+        <View
+          style={[
+            { gap: Spacing.gutter },
+            isMd ? { paddingHorizontal: Spacing.marginDesktop } : { paddingHorizontal: Spacing.marginMobile },
+            isLg ? { alignSelf: 'center', width: '100%', maxWidth: 1024 } : undefined
+          ]}
+        >
+          {/* Profile Settings + Appearance */}
+          <View style={isMd ? { flexDirection: 'row', gap: Spacing.gutter } : undefined}>
+            <View style={isMd ? { flex: 2 } : undefined}>
+              <SettingsCard>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
                 <Icon name="person" size={20} color={Colors.secondary} />
                 <Text style={styles.cardTitle}>PROFILE SETTINGS</Text>
               </View>
-              <TouchableOpacity>
-                <Text style={styles.editLink}>Edit Profile</Text>
-              </TouchableOpacity>
+              {editing ? (
+                <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                  <TouchableOpacity onPress={cancelEdit} disabled={saving}>
+                    <Text style={[styles.editLink, { color: Colors.onSurfaceVariant }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={saveProfile} disabled={saving}>
+                    <Text style={[styles.editLink, saving && { opacity: 0.5 }]}>
+                      {saving ? 'Saving…' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity onPress={startEdit}>
+                  <Text style={styles.editLink}>Edit Profile</Text>
+                </TouchableOpacity>
+              )}
             </View>
+            {!editing && successMsg && (
+              <View style={styles.feedbackRow}>
+                <Icon name="check-circle" size={16} color={Colors.onTertiaryContainer} />
+                <Text style={styles.successText}>{successMsg}</Text>
+              </View>
+            )}
+            {editing && errorMsg && (
+              <View style={styles.feedbackRow}>
+                <Icon name="error-outline" size={16} color={Colors.error} />
+                <Text style={styles.errorText}>{errorMsg}</Text>
+              </View>
+            )}
             <View style={{ flexDirection: 'row', gap: Spacing.lg, flexWrap: 'wrap' }}>
               <View>
                 <View style={styles.profilePhotoRing}>
-                  <Image source={{ uri: PROFILE_IMG }} style={styles.profilePhoto} />
+                  <Avatar uri={avatarUri} size={88} />
                   <View style={styles.cameraBtn}>
                     <Icon name="photo-camera" size={13} color="#ffffff" />
                   </View>
                 </View>
               </View>
-              <View style={{ flex: 1, minWidth: '60%', gap: Spacing.md }}>
-                <ProfileField label="FULL NAME" value={fullName} />
-                <ProfileField label="EMAIL ADDRESS" value={email} />
-                <ProfileField label="SPECIALIZATION" value={specialization} />
-                <ProfileField label="AFFILIATION" value={affiliation} />
+              <View style={{ flex: 1, minWidth: isMd ? 0 : '60%', gap: isMd ? Spacing.md : Spacing.md }}>
+                {isMd ? (
+                  <>
+                    {[0, 2, 4, 6].map(start => (
+                      <View key={start} style={{ flexDirection: 'row', gap: Spacing.md }}>
+                        <View style={{ flex: 1 }}>{renderField(PROFILE_FIELDS[start])}</View>
+                        <View style={{ flex: 1 }}>
+                          {PROFILE_FIELDS[start + 1] ? renderField(PROFILE_FIELDS[start + 1]) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  PROFILE_FIELDS.map(f => <React.Fragment key={f.label}>{renderField(f)}</React.Fragment>)
+                )}
               </View>
             </View>
-          </SettingsCard>
+            </SettingsCard>
+            </View>
 
-          {/* Appearance */}
-          <SettingsCard>
+            <View style={isMd ? { flex: 1 } : undefined}>
+            {/* Appearance */}
+            <SettingsCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm }}>
               <Icon name="palette" size={20} color={Colors.secondary} />
               <Text style={styles.cardTitle}>APPEARANCE</Text>
@@ -117,10 +320,15 @@ export default function SettingsScreen({ navigation }: any) {
               value={compactView}
               onChange={setCompactView}
             />
-          </SettingsCard>
+            </SettingsCard>
+            </View>
+          </View>
 
-          {/* Notifications */}
-          <SettingsCard>
+          {/* Notifications + Subscription */}
+          <View style={isMd ? { flexDirection: 'row', gap: Spacing.gutter } : undefined}>
+            <View style={isMd ? { flex: 1 } : undefined}>
+            {/* Notifications */}
+            <SettingsCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm }}>
               <Icon name="notifications-active" size={20} color={Colors.secondary} />
               <Text style={styles.cardTitle}>NOTIFICATIONS</Text>
@@ -128,10 +336,12 @@ export default function SettingsScreen({ navigation }: any) {
             <CheckRow icon="mail" label="Email Reports" checked={emailReports} onToggle={() => setEmailReports(v => !v)} divider />
             <CheckRow icon="vibration" label="Push Alerts" checked={pushAlerts} onToggle={() => setPushAlerts(v => !v)} divider />
             <CheckRow icon="query-stats" label="AI Insight Alerts" checked={aiAlerts} onToggle={() => setAiAlerts(v => !v)} />
-          </SettingsCard>
+            </SettingsCard>
+            </View>
 
-          {/* Subscription */}
-          <View style={styles.subscriptionCard}>
+            <View style={isMd ? { flex: 1 } : undefined}>
+            {/* Subscription */}
+            <View style={styles.subscriptionCard}>
             <View style={styles.subscriptionBlob} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md }}>
               <Icon name="workspace-premium" size={20} color={Colors.secondaryFixed} />
@@ -146,10 +356,15 @@ export default function SettingsScreen({ navigation }: any) {
                 <Text style={styles.managePlanText}>Manage Plan</Text>
               </TouchableOpacity>
             </View>
+            </View>
+            </View>
           </View>
 
-          {/* Privacy Controls */}
-          <SettingsCard>
+          {/* Privacy Controls + Language & Region */}
+          <View style={isMd ? { flexDirection: 'row', gap: Spacing.gutter } : undefined}>
+            <View style={isMd ? { flex: 7 } : undefined}>
+            {/* Privacy Controls */}
+            <SettingsCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm }}>
               <Icon name="security" size={20} color={Colors.secondary} />
               <Text style={styles.cardTitle}>PRIVACY CONTROLS</Text>
@@ -167,10 +382,12 @@ export default function SettingsScreen({ navigation }: any) {
               subtitle="Enabled via Authenticator App"
               trailing={<Icon name="check-circle" size={22} color={Colors.onTertiaryContainer} />}
             />
-          </SettingsCard>
+            </SettingsCard>
+            </View>
 
-          {/* Language & Region */}
-          <SettingsCard>
+            <View style={isMd ? { flex: 5 } : undefined}>
+            {/* Language & Region */}
+            <SettingsCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm }}>
               <Icon name="language" size={20} color={Colors.secondary} />
               <Text style={styles.cardTitle}>LANGUAGE & REGION</Text>
@@ -201,7 +418,9 @@ export default function SettingsScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
             </View>
-          </SettingsCard>
+            </SettingsCard>
+            </View>
+          </View>
 
           {/* Danger Zone */}
           <View style={styles.dangerZone}>
@@ -211,8 +430,8 @@ export default function SettingsScreen({ navigation }: any) {
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.md }}>
               <View style={{ flex: 1, minWidth: 220 }}>
-                <Text style={styles.dangerTitle}>Deactivate Account</Text>
-                <Text style={styles.dangerBody}>
+                <Text style={[styles.dangerTitle, isMd && { textAlign: 'left' }]}>Deactivate Account</Text>
+                <Text style={[styles.dangerBody, isMd && { textAlign: 'left' }]}>
                   Temporarily disable your profile and assessments. This can be undone.
                 </Text>
               </View>
@@ -226,6 +445,12 @@ export default function SettingsScreen({ navigation }: any) {
               </View>
             </View>
           </View>
+
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={handleLogout}>
+            <Icon name="logout" size={20} color={Colors.error} />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -235,6 +460,26 @@ export default function SettingsScreen({ navigation }: any) {
 function SettingsCard({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.card}>{children}</View>
+  );
+}
+
+function Avatar({ uri, size }: { uri: string | null; size: number }) {
+  if (uri) {
+    return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  }
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: Colors.surfaceContainerHigh,
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <Icon name="person" size={Math.round(size * 0.55)} color={Colors.onSurfaceVariant} />
+    </View>
   );
 }
 
@@ -335,6 +580,23 @@ function LinkRow({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
+  desktopHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 64,
+    paddingHorizontal: Spacing.marginDesktop,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(247,249,251,0.94)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(198,198,205,0.15)',
+    zIndex: 50
+  },
+  desktopBrand: { ...Typography.headlineMd, letterSpacing: -1.2, color: Colors.primary },
+  desktopBell: { padding: Spacing.base, borderRadius: 999 },
   header: {
     paddingTop: 44,
     paddingBottom: Spacing.sm,
@@ -345,7 +607,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(198,198,205,0.15)'
   },
-  headerAvatar: { width: 32, height: 32, borderRadius: 16 },
   pageHeader: { paddingHorizontal: Spacing.marginMobile, paddingTop: Spacing.lg, paddingBottom: Spacing.lg },
   card: {
     backgroundColor: Colors.surfaceContainerLowest,
@@ -367,9 +628,10 @@ const styles = StyleSheet.create({
     borderRadius: 48,
     borderWidth: 4,
     borderColor: Colors.secondaryContainer,
-    overflow: 'visible'
+    overflow: 'visible',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  profilePhoto: { width: 88, height: 88, borderRadius: 44 },
   cameraBtn: {
     position: 'absolute',
     bottom: -2,
@@ -383,6 +645,24 @@ const styles = StyleSheet.create({
   fieldLabel: { ...Typography.labelCaps, fontSize: 9, color: Colors.outline, marginBottom: Spacing.xs },
   fieldValueBox: { borderBottomWidth: 1, borderBottomColor: 'rgba(198,198,205,0.35)', paddingBottom: Spacing.xs },
   fieldValue: { ...Typography.bodyMd },
+  input: {
+    backgroundColor: Colors.surfaceContainer,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs + 4,
+    ...Typography.bodyMd,
+    fontSize: 14
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm
+  },
+  successText: { fontSize: 13, fontFamily: 'Inter_600SemiBold', fontWeight: '600', color: Colors.onTertiaryContainer },
+  errorText: { fontSize: 13, fontFamily: 'Inter_600SemiBold', fontWeight: '600', color: Colors.error },
   toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.sm },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: 'rgba(198,198,205,0.18)' },
   rowTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 15, fontWeight: '600' },
@@ -467,5 +747,17 @@ const styles = StyleSheet.create({
   },
   deleteText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, fontWeight: '600', color: '#ffffff' },
   dangerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 15, fontWeight: '600', color: Colors.error, textAlign: 'center' },
-  dangerBody: { fontSize: 12, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 2 }
+  dangerBody: { fontSize: 12, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 2 },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(186,26,26,0.35)',
+    backgroundColor: 'rgba(186,26,26,0.06)',
+    borderRadius: 8,
+    paddingVertical: Spacing.base
+  },
+  logoutText: { fontFamily: 'Inter_600SemiBold', fontSize: 15, fontWeight: '600', color: Colors.error }
 });

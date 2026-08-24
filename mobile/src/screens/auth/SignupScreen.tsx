@@ -5,16 +5,22 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  
+  useWindowDimensions,
   StyleSheet
 } from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '../../theme/colors';
 import { registerAthlete } from '../../services/api';
+import { saveSession } from '../../services/session';
 
 const GENDERS = ['Select Gender', 'Male', 'Female', 'Non-binary', 'Prefer not to say'];
 
 export default function SignupScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMd = width >= 768;
+  const isLg = width >= 1024;
+  const padH = isMd ? Spacing.marginDesktop : Spacing.marginMobile;
+  const container = { alignSelf: 'center' as const, width: '100%' as const, maxWidth: 672 };
   const [form, setForm] = useState({
     name: '',
     age: '',
@@ -65,7 +71,7 @@ export default function SignupScreen({ navigation }: any) {
     setSubmitting(true);
     setError('');
     try {
-      await registerAthlete({
+      const res = await registerAthlete({
         name: form.name,
         phone: form.phone,
         password: form.password,
@@ -75,6 +81,9 @@ export default function SignupScreen({ navigation }: any) {
         primarySport: form.sports,
         preferredSports: form.sports ? [form.sports] : undefined
       });
+      if (res?.token) {
+        await saveSession(res.token, res.user || res.data || null);
+      }
       setTimeout(() => {
         setSubmitting(false);
         navigation.replace('MainTabs');
@@ -90,12 +99,15 @@ export default function SignupScreen({ navigation }: any) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: padH }, isLg && { justifyContent: 'flex-start' }]}>
         <Text style={styles.brand}>TalentScope AI</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.pageTitle}>Create your elite profile.</Text>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingHorizontal: padH }, container, isMd && { paddingVertical: Spacing.xl }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.pageTitle, isMd && Typography.headlineLg]}>Create your elite profile.</Text>
         <Text style={[Typography.bodyLg, { color: Colors.onSurfaceVariant }]}>
           Join the next generation of athletic intelligence. Complete your profile to begin your transformation.
         </Text>
