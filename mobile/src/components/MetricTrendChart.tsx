@@ -65,8 +65,8 @@ export default function MetricTrendChart({
         <Line x1={padX} y1={height - padBottom + 8} x2={width - padX} y2={height - padBottom + 8} stroke="rgba(198,198,205,0.4)" strokeWidth={1} />
       </Svg>
       <View style={styles.labelsRow}>
-        {labels.map(label => (
-          <Text key={label} style={styles.label}>
+        {labels.map((label, i) => (
+          <Text key={`${label}-${i}`} style={styles.label}>
             {label}
           </Text>
         ))}

@@ -7,6 +7,9 @@ import LandingScreen from '../screens/auth/LandingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignupScreen from '../screens/auth/SignupScreen';
 import MainTabNavigator from './MainTabNavigator';
+import CoachDashboardScreen from '../screens/coach/CoachDashboardScreen';
+import CoachAthletesScreen from '../screens/coach/CoachAthletesScreen';
+import CoachAthleteOverviewScreen from '../screens/coach/CoachAthleteOverviewScreen';
 import AnalysisResultsScreen from '../screens/assessment/AnalysisResultsScreen';
 import InjuryRiskScreen from '../screens/assessment/InjuryRiskScreen';
 import ProgressScreen from '../screens/progress/ProgressScreen';
@@ -19,7 +22,7 @@ const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
   const [booting, setBooting] = useState(true);
-  const [initialRoute, setInitialRoute] = useState<'Landing' | 'MainTabs'>('Landing');
+  const [initialRoute, setInitialRoute] = useState<'Landing' | 'MainTabs' | 'CoachDashboard'>('Landing');
 
   useEffect(() => {
     (async () => {
@@ -27,8 +30,9 @@ export default function RootNavigator() {
         const token = await loadSessionToken();
         if (token) {
           setAuthToken(token);
-          await getProfile();
-          setInitialRoute('MainTabs');
+          const res = await getProfile();
+          const user = res?.data?.user || res?.user || null;
+          setInitialRoute(user?.role === 'coach' ? 'CoachDashboard' : 'MainTabs');
         }
       } catch {
         await clearSession();
@@ -61,6 +65,9 @@ export default function RootNavigator() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+        <Stack.Screen name="CoachDashboard" component={CoachDashboardScreen} />
+        <Stack.Screen name="CoachAthletes" component={CoachAthletesScreen} />
+        <Stack.Screen name="CoachAthleteOverview" component={CoachAthleteOverviewScreen} />
         <Stack.Screen name="AnalysisResults" component={AnalysisResultsScreen} />
         <Stack.Screen name="InjuryRisk" component={InjuryRiskScreen} />
         <Stack.Screen name="Progress" component={ProgressScreen} />

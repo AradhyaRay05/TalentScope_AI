@@ -39,9 +39,10 @@ export default function LoginScreen({ navigation }: any) {
       const res = await loginUser({ phone, password });
       if (res?.token) {
         await saveSession(res.token, res.user || res.data || null);
+        const role = res?.user?.role || res?.data?.user?.role || 'athlete';
         setTimeout(() => {
           setAuthenticating(false);
-          navigation.replace('MainTabs');
+          navigation.replace(role === 'coach' ? 'CoachDashboard' : 'MainTabs');
         }, 500);
         return;
       }

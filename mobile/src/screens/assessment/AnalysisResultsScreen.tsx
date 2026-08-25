@@ -13,7 +13,7 @@ import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
 import { CONTAINER_MAX } from '../../theme/useResponsive';
 import CircularScoreGauge from '../../components/CircularScoreGauge';
 import BiometricProgressBar from '../../components/BiometricProgressBar';
-import PostureHeatmap, { HeatmapSpot, PostureFinding } from '../../components/PostureHeatmap';
+import PostureHeatmap, { HeatmapSpot, PostureFinding, buildHeatmapSpotsFromAssessment as buildHeatmapSpots, buildFindingsFromAssessment as buildFindings } from '../../components/PostureHeatmap';
 import {
   getAssessmentById,
   getLatestAssessment,
@@ -45,63 +45,6 @@ const formatDate = (iso: any): string => {
 const clampPercent = (v: any): number => {
   const n = typeof v === 'number' && !Number.isNaN(v) ? v : 0;
   return Math.min(Math.max(n, 0), 100);
-};
-
-const resolveSpotCoords = (joint: string): [number, number] => {
-  const key = String(joint || '').toLowerCase();
-  if (key.includes('right knee')) return [65, 100];
-  if (key.includes('left knee')) return [35, 100];
-  if (key.includes('knee')) return [50, 100];
-  if (key.includes('right ankle') || key.includes('right foot')) return [65, 160];
-  if (key.includes('left ankle') || key.includes('left foot')) return [35, 160];
-  if (key.includes('ankle') || key.includes('dorsiflex')) return [50, 160];
-  if (key.includes('lumbar') || key.includes('lower back')) return [50, 56];
-  if (key.includes('spine') || key.includes('thoracic') || key.includes('back')) return [50, 44];
-  if (key.includes('hip') || key.includes('pelvis')) return [50, 62];
-  if (key.includes('shoulder')) return [50, 32];
-  if (key.includes('head') || key.includes('neck')) return [50, 20];
-  return [50, 80];
-};
-
-const buildHeatmapSpots = (a: any): HeatmapSpot[] => {
-  const spots = Array.isArray(a?.heatmapSpots) ? a.heatmapSpots : [];
-  return spots.map(s => {
-    const strain = typeof s?.strainScore === 'number' ? s.strainScore : 50;
-    const [cx, cy] = resolveSpotCoords(s?.joint);
-    const severity: HeatmapSpot['severity'] = strain >= 70 ? 'critical' : strain >= 40 ? 'normal' : 'optimal';
-    return { cx, cy, severity };
-  });
-};
-
-const buildFindings = (a: any): PostureFinding[] => {
-  const warnings = Array.isArray(a?.criticalWarnings) ? a.criticalWarnings : [];
-  const mapped = warnings.map((w: any): PostureFinding => {
-    const severity = String(w?.severity || 'Moderate');
-    return {
-      tagText:
-        severity === 'Critical'
-          ? 'CRITICAL WARNING'
-          : severity === 'Low'
-            ? 'MINOR FINDING'
-            : 'MODERATE WARNING',
-      tagColor: severity === 'Critical' ? Colors.error : severity === 'Low' ? Colors.secondary : '#b9740f',
-      title: formatValue(w?.warningType),
-      description: `${formatValue(w?.detail)}${
-        w?.phase && w.phase !== 'landing phase' ? ` Detected during ${w.phase}.` : ''
-      }`
-    };
-  });
-  if (mapped.length === 0) {
-    return [
-      {
-        tagColor: Colors.onSurfaceVariant,
-        tagText: 'NO FINDINGS',
-        title: 'No posture warnings recorded',
-        description: 'Detected warnings will appear here once analysis data is available for this session.'
-      }
-    ];
-  }
-  return mapped;
 };
 
 const buildBiometrics = (a: any) => {

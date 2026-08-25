@@ -62,3 +62,32 @@ exports.getMyBookings = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Server error fetching bookings' });
   }
 };
+
+/**
+ * @desc    List consultations belonging to the logged-in coach
+ * @route   GET /api/coaches/me/consultations
+ * @access  Private (Coach)
+ */
+exports.getCoachConsultations = async (req, res) => {
+  try {
+    const Coach = require('../models/Coach');
+    const coach = await Coach.findOne({ userId: req.user._id });
+    if (!coach) {
+      return res.status(404).json({ success: false, message: 'No coach profile linked to this account' });
+    }
+
+    const bookings = await Consultation.find({ coachId: coach._id })
+      .populate('athleteId', 'name avatar primarySport tier')
+      .populate('assessmentId', 'assessmentCode overallScore')
+      .sort({ scheduledDate: -1, createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: bookings.length,
+      data: bookings
+    });
+  } catch (error) {
+    console.error('[Get Coach Consultations Error]:', error.message);
+    return res.status(500).json({ success: false, message: error.message || 'Server error retrieving consultations' });
+  }
+};

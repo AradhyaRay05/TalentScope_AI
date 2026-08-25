@@ -120,20 +120,17 @@ exports.getAthleteDashboard = async (req, res) => {
  * @route   GET /api/athletes/progress
  * @access  Private (Athlete)
  */
-exports.getAthleteProgress = async (req, res) => {
-  try {
-    const athleteId = req.user._id;
-    const cacheKey = RedisService.getProgressKey(athleteId);
+exports.computeProgressData = async (athleteId) => {
+  const cacheKey = RedisService.getProgressKey(athleteId);
 
-    // 1. Check Redis Cache
-    const cachedProgress = await RedisService.get(cacheKey);
-    if (cachedProgress) {
-      return res.status(200).json({
-        success: true,
-        cached: true,
-        data: cachedProgress
-      });
-    }
+  // 1. Check Redis Cache
+  const cachedProgress = await RedisService.get(cacheKey);
+  if (cachedProgress) {
+    return {
+      cached: true,
+      data: cachedProgress
+    };
+  }
 
     // 2. Cache Miss -> Query MongoDB
     const allAssessments = await Assessment.find({ athleteId }).sort({ createdAt: -1 });
@@ -167,6 +164,10 @@ exports.getAthleteProgress = async (req, res) => {
       score: a.overallScore,
       speed: a.speed || null,
       power: a.power || null,
+      movementQuality: a.biometricsBreakdown?.movementQuality ?? null,
+      jointAlignment: a.biometricsBreakdown?.jointAlignment ?? null,
+      landingMechanics: a.biometricsBreakdown?.landingMechanics ?? null,
+      balanceStability: a.biometricsBreakdown?.balanceStability ?? null,
       testType: a.testType,
       isPeak: a.overallScore === peakScore
     }));
@@ -259,10 +260,19 @@ exports.getAthleteProgress = async (req, res) => {
     // 3. Store result in Redis with 5 minute TTL (300 seconds)
     await RedisService.set(cacheKey, progressData, 300);
 
-    return res.status(200).json({
-      success: true,
+    return {
       cached: false,
       data: progressData
+    };
+};
+
+exports.getAthleteProgress = async (req, res) => {
+  try {
+    const { cached, data } = await exports.computeProgressData(req.user._id);
+    return res.status(200).json({
+      success: true,
+      cached,
+      data
     });
   } catch (error) {
     console.error('[Athlete Progress Error]:', error.message);

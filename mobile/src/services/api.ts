@@ -149,3 +149,32 @@ export const bookConsultation = async (payload: {
 export const getMyConsultations = async () => {
   return await apiRequest('/consultations/mine', 'GET');
 };
+
+export const getCoachConsultations = async () => {
+  return await apiRequest('/coaches/me/consultations', 'GET');
+};
+
+// Coach dashboard endpoints
+export const getCoachMe = async () => {
+  return await apiRequest('/coaches/me', 'GET');
+};
+
+export const getCoachDashboard = async () => {
+  return await apiRequest('/coaches/me/dashboard', 'GET');
+};
+
+export const getMyCoachAthletes = async () => {
+  return await apiRequest('/coaches/me/athletes', 'GET');
+};
+
+export const getCoachAthleteOverview = async (athleteId: string) => {
+  return await apiRequest(`/coaches/me/athletes/${athleteId}/overview`, 'GET');
+};
+
+export const getCoachAthleteProgress = async (athleteId: string) => {
+  return await apiRequest(`/coaches/me/athletes/${athleteId}/progress`, 'GET');
+};
+
+export const getCoachAthleteInjuryRisk = async (athleteId: string) => {
+  return await apiRequest(`/coaches/me/athletes/${athleteId}/injury-risk`, 'GET');
+};

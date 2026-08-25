@@ -181,3 +181,58 @@ const styles = StyleSheet.create({
     marginTop: 2
   }
 });
+
+const resolveSpotCoords = (joint: any): [number, number] => {
+  const key = String(joint || '').toLowerCase();
+  if (key.includes('knee')) return [35, 100];
+  if (key.includes('ankle') || key.includes('foot')) return [35, 160];
+  if (key.includes('hip') || key.includes('pelvic')) return [50, 75];
+  if (key.includes('lumbar') || key.includes('spine') || key.includes('back')) return [50, 60];
+  if (key.includes('shoulder')) return [50, 32];
+  if (key.includes('head') || key.includes('neck')) return [50, 20];
+  return [50, 80];
+};
+
+export const buildHeatmapSpotsFromAssessment = (a: any): HeatmapSpot[] => {
+  const spots = Array.isArray(a?.heatmapSpots) ? a.heatmapSpots : [];
+  return spots.map((s: any) => {
+    const strain = typeof s?.strainScore === 'number' ? s.strainScore : 50;
+    const [cx, cy] = resolveSpotCoords(s?.joint);
+    const severity: HeatmapSpot['severity'] = strain >= 70 ? 'critical' : strain >= 40 ? 'normal' : 'optimal';
+    return { cx, cy, severity };
+  });
+};
+
+export const buildFindingsFromAssessment = (a: any): PostureFinding[] => {
+  const warnings = Array.isArray(a?.criticalWarnings) ? a.criticalWarnings : [];
+  const mapped = warnings.map((w: any): PostureFinding => {
+    const severity = String(w?.severity || 'Moderate');
+    return {
+      tagText:
+        severity === 'Critical'
+          ? 'CRITICAL WARNING'
+          : severity === 'Low'
+            ? 'MINOR FINDING'
+            : 'MODERATE WARNING',
+      tagColor:
+        severity === 'Critical'
+          ? Colors.error
+          : severity === 'Low'
+            ? Colors.secondary
+            : '#b9740f',
+      title: String(w?.warningType || 'Finding'),
+      description: `${String(w?.detail || '')}${w?.phase && w.phase !== 'landing phase' ? ` Detected during ${w.phase}.` : ''}`
+    };
+  });
+  if (mapped.length === 0) {
+    return [
+      {
+        tagColor: Colors.onSurfaceVariant,
+        tagText: 'NO FINDINGS',
+        title: 'No posture findings recorded',
+        description: 'No critical biomechanical warnings were detected for this assessment.'
+      }
+    ];
+  }
+  return mapped;
+};
