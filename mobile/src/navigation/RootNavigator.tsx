@@ -18,6 +18,7 @@ import { Colors } from '../theme/colors';
 import { loadSessionToken, clearSession } from '../services/session';
 import { setAuthToken, getProfile } from '../services/api';
 import { initNetworkListener } from '../services/network';
+import { initSyncEngine } from '../services/syncEngine';
 import OfflineBanner from '../components/OfflineBanner';
 
 const Stack = createNativeStackNavigator();
@@ -28,6 +29,7 @@ export default function RootNavigator() {
 
   useEffect(() => {
     initNetworkListener();
+    initSyncEngine();
   }, []);
 
   useEffect(() => {

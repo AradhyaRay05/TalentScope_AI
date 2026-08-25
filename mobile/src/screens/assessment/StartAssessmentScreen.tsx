@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,14 @@ import SkeletonOverlay from '../../components/SkeletonOverlay';
 import { createAssessment, updateAssessmentStatus, getProfile } from '../../services/api';
 import * as FileSystem from 'expo-file-system';
 import { useIsOnline } from '../../hooks/useConnectivity';
-import { addQueuedAssessment, getQueuedAssessments } from '../../services/assessmentQueue';
+import {
+  addQueuedAssessment,
+  getQueuedAssessments,
+  QueuedAssessment,
+  QueuedSyncStatus
+} from '../../services/assessmentQueue';
+import { retryFailedSync, subscribeSyncEvents } from '../../services/syncEngine';
+import { assertEnoughStorageForRecording } from '../../services/storageManager';
 import { loadSessionUser } from '../../services/session';
 
 const CAMERA_IMG =
@@ -116,6 +123,8 @@ export default function StartAssessmentScreen({ navigation }: any) {
   const [athleteId, setAthleteId] = useState<string | null>(null);
   const [offlineSaved, setOfflineSaved] = useState<{ pendingCount: number } | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [queueItems, setQueueItems] = useState<QueuedAssessment[]>([]);
+  const [retrying, setRetrying] = useState(false);
   const createdKeyRef = useRef('');
   const pulse = useRef(new Animated.Value(1)).current;
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -152,12 +161,48 @@ export default function StartAssessmentScreen({ navigation }: any) {
     };
   }, []);
 
-  // Pending-sync badge count
-  useEffect(() => {
+  // Pending-sync badge count + live sync status list
+  const refreshQueue = useCallback(() => {
     getQueuedAssessments()
-      .then(q => setPendingSyncCount(q.filter(x => x.syncStatus !== 'completed').length))
+      .then(q => {
+        setQueueItems(q);
+        setPendingSyncCount(q.filter(x => x.syncStatus !== 'completed').length);
+      })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    refreshQueue();
+    const unsub = subscribeSyncEvents(() => refreshQueue());
+    const iv = setInterval(refreshQueue, 10000);
+    return () => {
+      unsub();
+      clearInterval(iv);
+    };
+  }, [refreshQueue, isOnline]);
+
+  const failedCount = queueItems.filter(q => q.syncStatus === 'failed').length;
+
+  const onManualRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await retryFailedSync();
+    } finally {
+      setRetrying(false);
+      refreshQueue();
+    }
+  };
+
+  const syncChipFor = (status: QueuedSyncStatus): { text: string; color: string } => {
+    switch (status) {
+      case 'uploading': return { text: 'UPLOADING', color: Colors.secondary };
+      case 'processing': return { text: 'ANALYSIS', color: Colors.secondary };
+      case 'completed': return { text: 'SYNCED', color: '#009844' };
+      case 'failed': return { text: 'FAILED', color: Colors.error };
+      default: return { text: 'WAITING', color: '#b26a00' };
+    }
+  };
 
   useEffect(() => {
     if (!recording) return undefined;
@@ -177,12 +222,12 @@ export default function StartAssessmentScreen({ navigation }: any) {
   }, [pulse]);
 
   // Writes a real local file reference for the offline capture (metadata sidecar).
-  // Returns null when local storage is unavailable — the assessment is still queued
-  // with metadata so it is never lost.
+  // Insufficient storage surfaces a clear error instead of silently dropping data.
   const writeLocalVideoReference = async (
     key: string,
     durationMs: number
   ): Promise<string | null> => {
+    await assertEnoughStorageForRecording();
     try {
       const dir = `${FileSystem.cacheDirectory}offline-assessments`;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -326,7 +371,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
         </View>
         <View style={styles.glassBadge}>
           <Animated.View style={[styles.pulseDot, { opacity: pulse }]} />
-          <Text style={styles.badgeText}>{submitting ? 'CREATING SESSION…' : 'AI PROCESSING ACTIVE'}</Text>
+          <Text style={styles.badgeText}>{submitting ? 'CREATING SESSION...' : 'AI PROCESSING ACTIVE'}</Text>
         </View>
       </View>
       <View style={styles.timerBadge}>
@@ -369,7 +414,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
               ]}
             />
             <Text style={styles.recordBtnText}>
-              {submitting ? 'STARTING…' : recording ? 'STOP' : 'RECORD'}
+              {submitting ? 'STARTING...' : recording ? 'STOP' : 'RECORD'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.circleGlassBtn}>
@@ -389,8 +434,8 @@ export default function StartAssessmentScreen({ navigation }: any) {
       <Icon name="save" size={44} color={Colors.secondaryFixed ?? Colors.secondary} />
       <Text style={styles.savedTitle}>ASSESSMENT SAVED OFFLINE</Text>
       <Text style={styles.savedBody}>
-        Stored on this device and queued for synchronization. It has not been analyzed yet —
-        results will appear once you're back online.
+        Assessment saved. Waiting for connection.{'\n'}It has not been analyzed yet — results
+        will appear once you're back online.
       </Text>
       <View style={styles.savedPill}>
         <Text style={styles.savedPillText}>
@@ -540,7 +585,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
           onPress={startAssessment}
         >
           <Text style={styles.historicalBtnText}>
-            {submitting ? 'STARTING SESSION…' : 'START RECORDED SESSION'}
+            {submitting ? 'STARTING SESSION...' : 'START RECORDED SESSION'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -582,7 +627,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
           onPress={() => (recording ? onStopRecording() : startAssessment())}
         >
           <Text style={styles.headerRecordText}>
-            {submitting ? 'STARTING…' : recording ? 'STOP RECORDING' : 'START ASSESSMENT'}
+            {submitting ? 'STARTING...' : recording ? 'STOP RECORDING' : 'START ASSESSMENT'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -611,6 +656,46 @@ export default function StartAssessmentScreen({ navigation }: any) {
           isMd && { alignSelf: 'center', width: '100%', maxWidth: CONTAINER_MAX, paddingBottom: Spacing.xl }
         ]}
       >
+        {queueItems.length > 0 ? (
+          <View style={styles.syncCard}>
+            <View style={styles.syncHeader}>
+              <Text style={styles.syncTitle}>{`PENDING SYNC (${pendingSyncCount})`}</Text>
+              {failedCount > 0 ? (
+                <TouchableOpacity
+                  style={[styles.retrySyncBtn, retrying && styles.disabled]}
+                  disabled={retrying}
+                  onPress={onManualRetry}
+                >
+                  <Icon name="refresh" size={14} color={Colors.onSecondary} />
+                  <Text style={styles.retrySyncText}>{retrying ? 'RETRYING...' : 'RETRY SYNC'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <Text style={styles.syncSubtitle}>
+              {isOnline ? 'Connected â€” syncing automatically' : 'Offline â€” assessments will sync when connected'}
+            </Text>
+            {queueItems.map(item => {
+              const chip = syncChipFor(item.syncStatus);
+              return (
+                <View key={item.localId} style={styles.syncRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.syncRowTitle}>
+                      {[String(item.testType || '').replace(/_/g, ' '), item.sport].filter(Boolean).join(' â€¢ ')}
+                    </Text>
+                    {item.error ? (
+                      <Text style={styles.syncRowError} numberOfLines={2}>
+                        {item.error}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={[styles.statusChipSm, { backgroundColor: `${chip.color}22` }]}>
+                    <Text style={[styles.statusChipSmText, { color: chip.color }]}>{chip.text}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
         {isLg ? (
           <View style={{ flexDirection: 'row', gap: Spacing.gutter, alignItems: 'flex-start' }}>
             <View style={{ flex: 2, gap: Spacing.md }}>
@@ -699,6 +784,41 @@ const styles = StyleSheet.create({
   },
   offlineBadgeText: { ...Typography.labelCaps, fontSize: 9, color: Colors.onPrimary },
   savedCard: { alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingVertical: Spacing.xl },
+  syncCard: {
+    backgroundColor: Glass.backgroundColor,
+    borderWidth: 1,
+    borderColor: Glass.borderColor,
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg
+  },
+  syncHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  syncTitle: { ...Typography.headlineMd, fontSize: 16, color: Colors.onSurface },
+  retrySyncBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.secondary,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    minHeight: 36
+  },
+  retrySyncText: { ...Typography.labelCaps, fontSize: 9, color: Colors.onSecondary },
+  syncSubtitle: { ...Typography.bodyMd, fontSize: 12, color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(198,198,205,0.3)',
+    paddingTop: Spacing.sm,
+    marginTop: Spacing.xs
+  },
+  syncRowTitle: { ...Typography.bodyMd, fontWeight: '600', color: Colors.onSurface, flex: 1 },
+  syncRowError: { ...Typography.bodyMd, fontSize: 11, color: Colors.error },
+  statusChipSm: { borderRadius: 999, paddingHorizontal: Spacing.sm, paddingVertical: 3 },
+  statusChipSmText: { ...Typography.labelCaps, fontSize: 9 },
   savedTitle: { ...Typography.headlineMd, color: Colors.onSurface, textAlign: 'center' },
   savedBody: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center', maxWidth: 420 },
   savedPill: {

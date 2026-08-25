@@ -28,7 +28,12 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = () => authToken;
 
-const apiRequest = async (endpoint: string, method: string = 'GET', body: any = null) => {
+const apiRequest = async (
+  endpoint: string,
+  method: string = 'GET',
+  body: any = null,
+  opts: { timeoutMs?: number } = {}
+) => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -37,15 +42,37 @@ const apiRequest = async (endpoint: string, method: string = 'GET', body: any = 
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : null
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 20000);
 
-  const data = await response.json();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : null,
+      signal: controller.signal
+    });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      throw new Error('Network request timed out');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('Malformed response: server returned non-JSON payload');
+  }
+
   if (!response.ok) {
-    throw new Error(data.message || 'API request failed');
+    const err: any = new Error(data?.message || 'API request failed');
+    err.status = response.status;
+    throw err;
   }
   return data;
 };

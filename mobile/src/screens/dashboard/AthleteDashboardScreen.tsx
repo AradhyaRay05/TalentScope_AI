@@ -16,6 +16,9 @@ import MetricTrendChart from '../../components/MetricTrendChart';
 import BiometricProgressBar from '../../components/BiometricProgressBar';
 import AIChatBotModal from '../../components/AIChatBotModal';
 import { getProfile, getAthleteDashboard } from '../../services/api';
+import { getQueuedAssessments } from '../../services/assessmentQueue';
+import { subscribeSyncEvents } from '../../services/syncEngine';
+import { useNetworkStatus } from '../../hooks/useConnectivity';
 
 const MOVEMENT_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDrGzMiabVvpP93GB2fjxSCkmA4n5hVR5IdKMu4KEa5ZIQW-ZT6qb2uHiLYolSU2ybUE90OX6oD0VKF-2SFb6XZ-ZTDDM41wAQ0sTncz-Gc0A2b0mNAziLUj5EuK3lqIfKucK8snFbu1KJKNlfQY3HtozJLTUFyfSJAckHD6aG9DQdo_hOBGYQzAHeMuHcy-D86m8U_i4I6Oa5it-3RrRd2ZWrP7i0or7NzgVNNcNF7nhyzjuW51rStMIcuEAcAX39UwOVZVbUqNxg';
@@ -47,6 +50,9 @@ export default function AthleteDashboardScreen({ navigation }: any) {
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const networkStatus = useNetworkStatus();
+  const offline = networkStatus === 'offline';
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +74,23 @@ export default function AthleteDashboardScreen({ navigation }: any) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Offline / sync status tracking
+  const refreshPendingSync = useCallback(() => {
+    getQueuedAssessments()
+      .then(q => setPendingSyncCount(q.filter(x => x.syncStatus !== 'completed').length))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshPendingSync();
+    const unsub = subscribeSyncEvents(() => refreshPendingSync());
+    const iv = setInterval(refreshPendingSync, 10000);
+    return () => {
+      unsub();
+      clearInterval(iv);
+    };
+  }, [refreshPendingSync]);
 
   const avatarUri: string | null = profile?.avatar || dashboard?.athlete?.avatar || null;
 
@@ -160,6 +183,29 @@ export default function AthleteDashboardScreen({ navigation }: any) {
                   </TouchableOpacity>
                 </View>
               )}
+          {/* Offline / sync status */}
+          {(offline || pendingSyncCount > 0) && (
+            <TouchableOpacity
+              style={styles.pendingSyncCard}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Assess')}
+            >
+              <Icon name={offline ? 'wifi-off' : 'cloud-sync'} size={20} color={Colors.secondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pendingSyncTitle}>
+                  {offline
+                    ? "You're offline. Assessments will be saved and synced later."
+                    : `${pendingSyncCount} assessment${pendingSyncCount === 1 ? '' : 's'} waiting to sync`}
+                </Text>
+                <Text style={styles.pendingSyncBody}>
+                  {pendingSyncCount > 0
+                    ? `${pendingSyncCount} waiting to sync • Open Assess for details`
+                    : 'Recording works without connection'}
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={20} color={Colors.onSurfaceVariant} />
+            </TouchableOpacity>
+          )}
           {/* Quick Actions */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md }}>
             <TouchableOpacity
@@ -651,6 +697,19 @@ const styles = StyleSheet.create({
   },
   cardHeader: { marginBottom: Spacing.md },
   cardLabel: { ...Typography.labelCaps, color: Colors.onSurfaceVariant },
+  pendingSyncCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.secondaryContainer,
+    borderWidth: 1,
+    borderColor: Colors.secondaryContainer,
+    borderRadius: 14,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg
+  },
+  pendingSyncTitle: { fontFamily: 'Geist_600SemiBold', fontSize: 14, lineHeight: 19, fontWeight: '600', color: Colors.onSurface },
+  pendingSyncBody: { ...Typography.bodyMd, fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',

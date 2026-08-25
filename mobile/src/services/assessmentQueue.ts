@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *
  * Stored as a single JSON array under QUEUE_KEY (same AsyncStorage architecture
  * as session.ts). Entries survive app restarts, navigation and network loss.
- * Only lightweight metadata + a local FILE REFERENCE are stored here — binary
+ * Only lightweight metadata + a local FILE REFERENCE are stored here â€” binary
  * video data must live on disk (expo-file-system), never inside this JSON.
  */
 
@@ -18,6 +18,18 @@ export type QueuedSyncStatus =
   | 'processing'
   | 'completed'
   | 'failed';
+
+/**
+ * Why a synchronization attempt failed. Temporary categories are eligible for
+ * automatic retry (with backoff); permanent ones require manual retry.
+ */
+export type SyncErrorCategory =
+  | 'network'
+  | 'server_unavailable'
+  | 'upload_failed'
+  | 'auth'
+  | 'invalid_data'
+  | 'permanent';
 
 export interface QueuedAssessment {
   /** Stable locally-generated identifier (survives restarts) */
@@ -32,14 +44,19 @@ export interface QueuedAssessment {
   testType: string;
   category?: string;
   notes?: string;
-  /** Local file-system URI reference — NEVER raw video bytes */
+  /** Local file-system URI reference â€” NEVER raw video bytes */
   localVideoUri: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: QueuedSyncStatus;
   retryCount: number;
   lastSyncAttemptAt: string | null;
+  /** User-friendly failure reason */
   error: string | null;
+  /** Structured failure classification driving retry policy */
+  errorCategory: SyncErrorCategory | null;
+  /** Earliest time automatic retry may run (backoff) */
+  nextAttemptAt: string | null;
 }
 
 export interface QueuedAssessmentInput {
@@ -121,7 +138,9 @@ export const addQueuedAssessment = async (
     syncStatus: 'pending',
     retryCount: 0,
     lastSyncAttemptAt: null,
-    error: null
+    error: null,
+    errorCategory: null,
+    nextAttemptAt: null
   };
 
   await writeQueue([...queue, entry]);

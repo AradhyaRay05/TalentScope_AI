@@ -15,7 +15,7 @@ export default function OfflineBanner() {
   return (
     <View style={styles.banner} pointerEvents="none">
       <Icon name="wifi-off" size={14} color={Colors.onPrimary} />
-      <Text style={styles.text}>You're offline — showing saved data where available</Text>
+      <Text style={styles.text}>You're offline. Your assessment will be saved and synced later.</Text>
     </View>
   );
 }

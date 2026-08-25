@@ -80,7 +80,9 @@ exports.createAssessment = async (req, res) => {
     });
   } catch (error) {
     console.error('[Create Assessment Error]:', error.message);
-    return res.status(500).json({
+    // Client-side data problems (validation, bad enum/refs) are 400s, not server errors
+    const isValidationError = error.name === 'ValidationError' || /validation failed|is not a valid enum value|Cast to .* failed/i.test(error.message || '');
+    return res.status(isValidationError ? 400 : 500).json({
       success: false,
       message: error.message || 'Server error creating assessment'
     });

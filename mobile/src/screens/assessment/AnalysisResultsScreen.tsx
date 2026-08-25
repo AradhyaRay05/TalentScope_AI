@@ -20,6 +20,7 @@ import {
   saveAssessmentResults,
   markAssessmentCompleted
 } from '../../services/api';
+import { deleteVideoForServerId } from '../../services/storageManager';
 
 const PROCESSING_STATUSES = ['created', 'pending', 'uploading', 'processing'];
 
@@ -147,6 +148,11 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
         }
       });
       await markAssessmentCompleted(assessment._id);
+      // Fully synchronized: mark complete, drop the queue entry, and remove the
+      // local video file (no longer required after confirmed completion)
+      try {
+        await deleteVideoForServerId(assessment._id);
+      } catch {}
       await load();
     } catch (e) {
       setFinalizeError(e instanceof Error ? e.message : 'Failed to finalize review');
