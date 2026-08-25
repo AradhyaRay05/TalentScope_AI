@@ -15,6 +15,10 @@ import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
 import { CONTAINER_MAX } from '../../theme/useResponsive';
 import SkeletonOverlay from '../../components/SkeletonOverlay';
 import { createAssessment, updateAssessmentStatus, getProfile } from '../../services/api';
+import * as FileSystem from 'expo-file-system';
+import { useIsOnline } from '../../hooks/useConnectivity';
+import { addQueuedAssessment, getQueuedAssessments } from '../../services/assessmentQueue';
+import { loadSessionUser } from '../../services/session';
 
 const CAMERA_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCPfv8hPZ4F0uI7AhmV451JN0RxNDOP-pH5hhtnjfAoi0wNI_ZSFfcDnJQQLINwM6BzFJ8Wuo6S75rwi_BPzF3y6PErI8hr_HKlti0Dl_vjSREIKqS9I8mY_IH9tK3ZsB77emud_f_cqZ60Q6cnWIHK8Wh84MH57cmKzxTLZjFIkZ9_sPbQxbt9oOiC_Jgz6YnhNPZJ-DD_a-O-V5h_46UN_yDzBThw3zexTROYykcTVftjKs8RSuafFVZ-SxI_whXe5-siJMMM9mg';
@@ -107,6 +111,12 @@ export default function StartAssessmentScreen({ navigation }: any) {
   const [sport, setSport] = useState(SPORTS[0]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const isOnline = useIsOnline();
+  const [athleteId, setAthleteId] = useState<string | null>(null);
+  const [offlineSaved, setOfflineSaved] = useState<{ pendingCount: number } | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const createdKeyRef = useRef('');
   const pulse = useRef(new Animated.Value(1)).current;
   const [elapsedMs, setElapsedMs] = useState(0);
   const { width } = useWindowDimensions();
@@ -118,20 +128,35 @@ export default function StartAssessmentScreen({ navigation }: any) {
 
   useEffect(() => {
     let active = true;
+    // Offline-safe athlete reference from cached session
+    loadSessionUser()
+      .then(u => {
+        if (active && u?._id) setAthleteId(String(u._id));
+      })
+      .catch(() => {});
     (async () => {
       try {
         const res = await getProfile();
-        const profile = res?.data ?? res?.user ?? {};
-        const primarySport = profile?.primarySport;
+        const user = res?.data?.user ?? res?.data ?? res?.user ?? {};
+        const uid = user?._id ? String(user._id) : null;
+        const primarySport = user?.primarySport;
         if (active && typeof primarySport === 'string' && primarySport.trim()) {
           const match = SPORTS.find(s => s.toLowerCase() === primarySport.toLowerCase());
           if (match) setSport(match);
         }
+        if (active && uid) setAthleteId(uid);
       } catch {}
     })();
     return () => {
       active = false;
     };
+  }, []);
+
+  // Pending-sync badge count
+  useEffect(() => {
+    getQueuedAssessments()
+      .then(q => setPendingSyncCount(q.filter(x => x.syncStatus !== 'completed').length))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -151,10 +176,92 @@ export default function StartAssessmentScreen({ navigation }: any) {
     return () => loop.stop();
   }, [pulse]);
 
-  const startAssessment = async () => {
-    if (submitting) return;
+  // Writes a real local file reference for the offline capture (metadata sidecar).
+  // Returns null when local storage is unavailable — the assessment is still queued
+  // with metadata so it is never lost.
+  const writeLocalVideoReference = async (
+    key: string,
+    durationMs: number
+  ): Promise<string | null> => {
+    try {
+      const dir = `${FileSystem.cacheDirectory}offline-assessments`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      const uri = `${dir}${key}.json`;
+      await FileSystem.writeAsStringAsync(
+        uri,
+        JSON.stringify({
+          kind: 'talentscope-offline-recording',
+          recordedAt: new Date().toISOString(),
+          durationMs,
+          sport,
+          testType
+        })
+      );
+      const info = await FileSystem.getInfoAsync(uri);
+      return info.exists ? uri : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const finishOfflineSave = async () => {
     setSubmitting(true);
     setError(null);
+    try {
+      if (!athleteId) throw new Error('Athlete profile not loaded yet. Please retry.');
+      if (!createdKeyRef.current) createdKeyRef.current = `${athleteId}:${testType}:${Date.now()}`;
+      const videoRef = await writeLocalVideoReference(createdKeyRef.current, elapsedMs);
+      await addQueuedAssessment({
+        athleteId,
+        sport,
+        testType,
+        category: sport,
+        localVideoUri: videoRef,
+        idempotencyKey: createdKeyRef.current
+      });
+      const q = await getQueuedAssessments();
+      const pending = q.filter(x => x.syncStatus !== 'completed').length;
+      setPendingSyncCount(pending);
+      setOfflineSaved({ pendingCount: pending });
+      setRecording(false);
+      setElapsedMs(0);
+    } catch (e) {
+      setRecording(false);
+      setElapsedMs(0);
+      const msg = e instanceof Error ? e.message : 'Local save failed';
+      setError(
+        msg.includes('Duplicate')
+          ? 'This assessment is already saved offline.'
+          : `Offline save failed: ${msg}`
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startAssessment = async () => {
+    if (submitting) return;
+    setError(null);
+
+    // OFFLINE: never attempt the API — record locally and queue for sync
+    if (!isOnline) {
+      if (!athleteId) {
+        setError('Profile still loading. Please try again in a moment.');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        createdKeyRef.current = `${athleteId}:${testType}:${Date.now()}`;
+        setInfo('OFFLINE — this assessment will be saved to your device');
+        setRecording(true);
+        setElapsedMs(0);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const created = await createAssessment({
         sport,
@@ -178,6 +285,10 @@ export default function StartAssessmentScreen({ navigation }: any) {
   };
 
   const onStopRecording = () => {
+    if (!isOnline && recording) {
+      void finishOfflineSave();
+      return;
+    }
     setRecording(false);
     setElapsedMs(0);
   };
@@ -203,6 +314,12 @@ export default function StartAssessmentScreen({ navigation }: any) {
       </View>
 
       <View style={styles.statusColumn}>
+        {!isOnline ? (
+          <View style={styles.offlineBadge}>
+            <Icon name="wifi-off" size={12} color="#ffffff" />
+            <Text style={styles.offlineBadgeText}>OFFLINE MODE</Text>
+          </View>
+        ) : null}
         <View style={styles.glassBadge}>
           <Icon name="videocam" size={14} color={Colors.secondary} />
           <Text style={styles.badgeText}>LIVE FEED: 1080P</Text>
@@ -266,6 +383,30 @@ export default function StartAssessmentScreen({ navigation }: any) {
       </View>
     </View>
   );
+
+  const offlineSavedCard = offlineSaved ? (
+    <View style={[styles.cameraCard, styles.savedCard, isMd && { aspectRatio: undefined }]}>
+      <Icon name="save" size={44} color={Colors.secondaryFixed ?? Colors.secondary} />
+      <Text style={styles.savedTitle}>ASSESSMENT SAVED OFFLINE</Text>
+      <Text style={styles.savedBody}>
+        Stored on this device and queued for synchronization. It has not been analyzed yet —
+        results will appear once you're back online.
+      </Text>
+      <View style={styles.savedPill}>
+        <Text style={styles.savedPillText}>
+          WAITING FOR SYNC • {offlineSaved.pendingCount} PENDING
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.recordBtn, submitting && styles.disabled]}
+        disabled={submitting}
+        onPress={() => setOfflineSaved(null)}
+      >
+        <Text style={styles.recordBtnText}>RECORD ANOTHER</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
 
   const validationGrid = (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md }}>
@@ -456,6 +597,13 @@ export default function StartAssessmentScreen({ navigation }: any) {
         </View>
       ) : null}
 
+      {info && !error && !offlineSaved ? (
+        <View style={[styles.offlineHint, { marginHorizontal: padH }]}>
+          <Icon name="wifi-off" size={14} color={Colors.onSurfaceVariant} />
+          <Text style={styles.offlineHintText}>{info}</Text>
+        </View>
+      ) : null}
+
       <View
         style={[
           styles.body,
@@ -466,7 +614,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
         {isLg ? (
           <View style={{ flexDirection: 'row', gap: Spacing.gutter, alignItems: 'flex-start' }}>
             <View style={{ flex: 2, gap: Spacing.md }}>
-              {cameraCard}
+              {offlineSaved ? offlineSavedCard : cameraCard}
               {validationGrid}
             </View>
             <View style={{ flex: 1, gap: Spacing.gutter }}>
@@ -477,7 +625,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
           </View>
         ) : (
           <>
-            {cameraCard}
+            {offlineSaved ? offlineSavedCard : cameraCard}
             {validationGrid}
             {assessmentCard}
             {biometricsCard}
@@ -527,6 +675,39 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.base
   },
   headerRecordText: { ...Typography.labelCaps, letterSpacing: 2.2, color: Colors.onPrimary },
+  offlineHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: 'rgba(198,198,205,0.4)',
+    borderRadius: 10,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.md
+  },
+  offlineHintText: { ...Typography.bodyMd, fontSize: 13, color: Colors.onSurfaceVariant },
+  offlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: 6,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3
+  },
+  offlineBadgeText: { ...Typography.labelCaps, fontSize: 9, color: Colors.onPrimary },
+  savedCard: { alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingVertical: Spacing.xl },
+  savedTitle: { ...Typography.headlineMd, color: Colors.onSurface, textAlign: 'center' },
+  savedBody: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center', maxWidth: 420 },
+  savedPill: {
+    backgroundColor: Colors.secondaryContainer,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs
+  },
+  savedPillText: { ...Typography.labelCaps, fontSize: 10, color: Colors.onSecondaryContainer },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
