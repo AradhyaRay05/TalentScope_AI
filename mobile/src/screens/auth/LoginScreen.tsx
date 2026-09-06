@@ -103,7 +103,7 @@ export default function LoginScreen({ navigation }: any) {
 
               <View style={styles.orDivider}>
                 <View style={styles.orLine} />
-                <Text style={styles.orText}>OR EMAIL</Text>
+                <Text style={styles.orText}>OR PHONE</Text>
               </View>
 
               <View style={{ gap: Spacing.md }}>
@@ -148,7 +148,7 @@ export default function LoginScreen({ navigation }: any) {
                 onPress={handleLogin}
                 disabled={authenticating}
               >
-                <Text style={styles.loginBtnText}>{authenticating ? 'Authenticating...' : 'Login'}</Text>
+                <Text style={styles.loginBtnText}>{authenticating ? 'Authenticating...' : 'Log In'}</Text>
               </TouchableOpacity>
 
               <View style={styles.footerLinks}>
@@ -161,11 +161,11 @@ export default function LoginScreen({ navigation }: any) {
               <View style={styles.trustRow}>
                 <View style={styles.trustItem}>
                   <Icon name="verified-user" size={24} color={Colors.onSurface} />
-                  <Text style={styles.trustLabel}>SOC2 COMPLIANT</Text>
+                  <Text style={styles.trustLabel}>SOC 2 COMPLIANT</Text>
                 </View>
                 <View style={styles.trustItem}>
                   <Icon name="enhanced-encryption" size={24} color={Colors.onSurface} />
-                  <Text style={styles.trustLabel}>AES-256 BIT</Text>
+                  <Text style={styles.trustLabel}>AES-256 ENCRYPTION</Text>
                 </View>
               </View>
             </View>

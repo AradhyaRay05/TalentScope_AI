@@ -1,0 +1,52 @@
+{
+  "target": "mtq06zbi-rmud0yy3-ftw1",
+  "targetStatus": null,
+  "queue": [
+    {
+      "id": "mtq06zb1-w21k3vkg-scnd",
+      "key": "RS2",
+      "st": "processing",
+      "srv": "srv-9001",
+      "err": null,
+      "cat": null
+    },
+    {
+      "id": "mtq06zb5-j0ofqzv2-f491",
+      "key": "RS3",
+      "st": "processing",
+      "srv": "srv-9002",
+      "err": null,
+      "cat": null
+    },
+    {
+      "id": "mtq06zbf-vjota20b-1hkc",
+      "key": "RS4",
+      "st": "processing",
+      "srv": "srv-9003",
+      "err": null,
+      "cat": null
+    }
+  ],
+  "server": [
+    {
+      "_id": "srv-9001",
+      "key": "RS2",
+      "st": "processing"
+    },
+    {
+      "_id": "srv-9002",
+      "key": "RS3",
+      "st": "processing"
+    },
+    {
+      "_id": "srv-9003",
+      "key": "RS4",
+      "st": "processing"
+    },
+    {
+      "_id": "srv-9004",
+      "key": "RS5",
+      "st": "completed"
+    }
+  ]
+}

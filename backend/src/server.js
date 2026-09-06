@@ -15,6 +15,30 @@ connectDB();
 // Initialize Redis (Secondary Caching Layer - Optional/Resilient)
 connectRedis();
 
+/**
+ * Duplicate-prevention index (Phase 6): one assessment per (athlete,
+ * idempotencyKey). Ensured explicitly so it exists even on pre-existing
+ * collections where Mongoose's autoIndex may not have applied it.
+ */
+const mongoose = require('mongoose');
+const connectIdempotencyIndex = async () => {
+  try {
+    await mongoose.connection.asPromise();
+    await mongoose.connection.collection('assessments').createIndex(
+      { athleteId: 1, idempotencyKey: 1 },
+      {
+        unique: true,
+        name: 'athleteId_1_idempotencyKey_1_unique',
+        partialFilterExpression: { idempotencyKey: { $type: 'string' } }
+      }
+    );
+    console.log('[Index] idempotency unique index ensured on assessments');
+  } catch (e) {
+    console.warn('[Index] could not ensure idempotency index:', e.message);
+  }
+};
+connectIdempotencyIndex();
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {

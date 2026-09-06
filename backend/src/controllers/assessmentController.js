@@ -48,27 +48,75 @@ const checkAssessmentAccess = async (req, assessment) => {
 };
 
 /**
- * @desc    1. Create a new assessment record
+ * @desc    1. Create a new assessment record (idempotent for offline clients)
  * @route   POST /api/assessments
  * @access  Private (Athlete)
+ *
+ * Duplicate-safety contract:
+ *  - If the request body carries an `idempotencyKey`, a record with that key
+ *    already existing for this athlete is RETURNED (not duplicated). This
+ *    makes retries safe when the original response was lost (timeout,
+ *    app restart mid-upload, manual retry, flapping connectivity).
+ *  - Concurrent duplicate requests are caught by the unique index (E11000)
+ *    and resolved to the winning record.
+ *  - Requests WITHOUT a key behave exactly as before (back-compat).
  */
 exports.createAssessment = async (req, res) => {
   try {
     const athleteId = req.user._id;
-    const { sport, testType, category, videoUrl, videoMetadata } = req.body;
+    const { sport, testType, category, videoUrl, videoMetadata, idempotencyKey } = req.body;
+
+    // 1. Replay lookup: an assessment with this client-generated key already
+    //    exists -> return it instead of creating a second one.
+    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim()) {
+      const existing = await Assessment.findOne({
+        athleteId,
+        idempotencyKey: idempotencyKey.trim()
+      });
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          message: 'Assessment already exists for this idempotency key',
+          data: existing
+        });
+      }
+    }
 
     const assessmentCode = req.body.assessmentCode || generateAssessmentCode();
 
-    const assessment = await Assessment.create({
-      assessmentCode,
-      athleteId,
-      sport: sport || req.user.primarySport || 'Athletics',
-      testType: testType || 'unilateral_squat',
-      category: category || 'Athletics',
-      status: 'created',
-      videoUrl: videoUrl || null,
-      videoMetadata: videoMetadata || {}
-    });
+    let assessment;
+    try {
+      assessment = await Assessment.create({
+        assessmentCode,
+        athleteId,
+        sport: sport || req.user.primarySport || 'Athletics',
+        testType: testType || 'unilateral_squat',
+        category: category || 'Athletics',
+        status: 'created',
+        videoUrl: videoUrl || null,
+        videoMetadata: videoMetadata || {},
+        idempotencyKey: idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim()
+          ? idempotencyKey.trim()
+          : null
+      });
+    } catch (raceError) {
+      // 2. Unique-index race (two concurrent creates with the same key):
+      //    resolve to the record that won.
+      if (raceError?.code === 11000 || /duplicate key/i.test(String(raceError?.message || ''))) {
+        const winner = await Assessment.findOne({
+          athleteId,
+          idempotencyKey: idempotencyKey.trim()
+        });
+        if (winner) {
+          return res.status(200).json({
+            success: true,
+            message: 'Assessment already exists for this idempotency key',
+            data: winner
+          });
+        }
+      }
+      throw raceError;
+    }
 
     // Invalidate dashboard count cache
     await RedisService.invalidateAthleteCache(athleteId);

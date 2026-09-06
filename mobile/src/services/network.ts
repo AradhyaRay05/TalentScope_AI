@@ -3,8 +3,40 @@ import { AppState } from 'react-native';
 
 export type NetworkStatus = 'online' | 'offline' | 'unknown';
 
+/**
+ * Centralized connectivity detection (singleton service).
+ *
+ * Consumers:
+ *  - assessment flow (StartAssessmentScreen via useIsOnline)
+ *  - offline queue / sync engine (getNetworkStatus + subscribeToNetwork)
+ *  - UI components (OfflineBanner, AthleteDashboardScreen via useNetworkStatus)
+ *
+ * States:
+ *  - 'online'  device connected AND internet not known-unreachable
+ *  - 'offline' disconnected or reachability definitively failed
+ *  - 'unknown' initializing — before the first reading arrives
+ *
+ * Transition policy:
+ *  - any     -> OFFLINE applied immediately (data-safety first). This also
+ *    cancels any pending online confirmation, so flapping is impossible.
+ *  - UNKNOWN -> ONLINE  applied immediately on the first connected reading
+ *    (if reachability later resolves false we drop to offline just as fast).
+ *  - OFFLINE -> ONLINE  confirmed only after ONLINE_CONFIRMATION_MS of
+ *    stable connectivity, so brief wifi <-> cellular handoffs and micro
+ *    outages cannot flap the app between states. Readings where
+ *    isInternetReachable is still unresolved (null — common on web) are
+ *    treated as connected candidates, so the app can never get stuck
+ *    offline while the interface is up.
+ *
+ * No polling: NetInfo pushes connectivity events; returning from background
+ * re-queries once to catch interruptions that happened while suspended.
+ */
+
+const ONLINE_CONFIRMATION_MS = 2000;
+
 let current: NetworkStatus = 'unknown';
 let initialized = false;
+let pendingOnlineTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<(s: NetworkStatus) => void>();
 
 const notify = () => {
@@ -23,17 +55,58 @@ const setStatus = (next: NetworkStatus) => {
   notify();
 };
 
-const mapNetInfoState = (state: NetInfoState): NetworkStatus => {
-  const connected = state.isConnected === true;
-  const reachable: boolean | null | undefined = state.isInternetReachable as boolean | null | undefined;
-  if (!connected) return 'offline';
-  if (reachable === false) return 'offline';
-  if (reachable === true || reachable == null) return 'online';
-  return current === 'unknown' ? 'unknown' : current;
+const clearPendingOnline = () => {
+  if (pendingOnlineTimer !== null) {
+    clearTimeout(pendingOnlineTimer);
+    pendingOnlineTimer = null;
+  }
+};
+
+/**
+ * Pure mapping from a raw NetInfo state to our NetworkStatus.
+ *  - not connected                       -> 'offline'
+ *  - connected but reachability FAILED   -> 'offline' (definitive no-internet)
+ *  - connected (reachability true/null)  -> 'online' candidate
+ */
+export const mapNetInfoState = (state: NetInfoState): NetworkStatus => {
+  if (state.isConnected !== true) return 'offline';
+  if (state.isInternetReachable === false) return 'offline';
+  return 'online';
+};
+
+/**
+ * Apply one connectivity reading using the transition policy above.
+ */
+const applyNetInfoState = (state: NetInfoState): void => {
+  const next = mapNetInfoState(state);
+
+  if (next === 'offline') {
+    clearPendingOnline();
+    setStatus('offline');
+    return;
+  }
+
+  // next === 'online' (connected, internet not known-unreachable)
+  if (current === 'online') return;
+
+  if (current === 'unknown') {
+    // First connected reading at startup: promote immediately so the online
+    // flow is never blocked. A later definitive unreachable reading will
+    // demote us just as fast.
+    setStatus('online');
+    return;
+  }
+
+  // OFFLINE -> ONLINE: require a stable window before trusting the link.
+  if (pendingOnlineTimer !== null) return; // already confirming
+  pendingOnlineTimer = setTimeout(() => {
+    pendingOnlineTimer = null;
+    setStatus('online');
+  }, ONLINE_CONFIRMATION_MS);
 };
 
 const handleNetInfoChange = (state: NetInfoState) => {
-  setStatus(mapNetInfoState(state));
+  applyNetInfoState(state);
 };
 
 /**

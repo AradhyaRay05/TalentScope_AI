@@ -96,6 +96,20 @@ const AssessmentSchema = new mongoose.Schema(
       type: String,
       default: 'Athletics'
     },
+    /**
+     * Idempotency key supplied by offline clients (client-generated stable
+     * identifier for ONE logical assessment). Uniquely enforced (sparse: older
+     * records without a key are unaffected). Retrying a create with the same
+     * key returns the EXISTING record instead of creating a duplicate.
+     * The compound index is declared at the schema level below (see
+     * ASSESSMENT_IDEMPOTENCY_INDEX) and ensured at server startup, so it is
+     * created even for pre-existing collections.
+     */
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      default: null
+    },
 
     // STATUS
     status: {
@@ -272,5 +286,21 @@ AssessmentSchema.index({ athleteId: 1, testType: 1, createdAt: -1 });
 AssessmentSchema.index({ athleteId: 1, sport: 1, createdAt: -1 });
 AssessmentSchema.index({ sport: 1, overallScore: -1 });
 AssessmentSchema.index({ status: 1, createdAt: 1 });
+
+/**
+ * Duplicate-prevention index: one server assessment per (athlete, client
+ * idempotency key). Partial (only documents WITH a key are indexed) so all
+ * legacy records and no-key creates are unaffected.
+ * Declared here AND ensured at server startup (models are compiled before
+ * the connection's autoIndex may run on pre-existing collections).
+ */
+AssessmentSchema.index(
+  { athleteId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    name: 'athleteId_1_idempotencyKey_1_unique',
+    partialFilterExpression: { idempotencyKey: { $type: 'string' } }
+  }
+);
 
 module.exports = mongoose.model('Assessment', AssessmentSchema);

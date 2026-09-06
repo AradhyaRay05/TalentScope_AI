@@ -148,10 +148,11 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
         }
       });
       await markAssessmentCompleted(assessment._id);
-      // Fully synchronized: mark complete, drop the queue entry, and remove the
-      // local video file (no longer required after confirmed completion)
+      // Fully synchronized: the server just confirmed completion, so cleanup
+      // is allowed — drop the queue entry and remove the local video file
+      // (no longer required after confirmed completion)
       try {
-        await deleteVideoForServerId(assessment._id);
+        await deleteVideoForServerId(assessment._id, { confirmCompleted: true });
       } catch {}
       await load();
     } catch (e) {
@@ -203,7 +204,7 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
             <Text style={styles.inlineError}>{loadError}</Text>
           ) : null}
           <TouchableOpacity style={styles.primaryActionBtn} activeOpacity={0.85} onPress={goToAssessTab}>
-            <Text style={styles.primaryActionText}>GO TO ASSESS</Text>
+            <Text style={styles.primaryActionText}>GO TO ASSESSMENT</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -225,7 +226,7 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
           </View>
           <View style={[styles.statusChip, { backgroundColor: 'rgba(198,198,205,0.25)' }]}>
             <Text style={[styles.statusText, { color: Colors.onSurfaceVariant }]}>
-              {formatValue(assessment.sport)} • {formatValue(assessment.testType)}
+              {formatValue(assessment.sport)} • {formatValue(assessment.testType).replace(/_/g, ' ')}
             </Text>
           </View>
           {isCompleted ? (
@@ -276,6 +277,9 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
                 No automated analysis pipeline is connected yet. Once you have reviewed the recorded session, finalize
                 it below — this stores a real completed record in the database.
               </Text>
+              <View style={{ marginTop: Spacing.lg }}>
+                <PostureHeatmap state="processing" spots={[]} findings={[]} height={320} />
+              </View>
               {finalizeError ? <Text style={styles.inlineError}>{finalizeError}</Text> : null}
               <TouchableOpacity
                 style={[styles.finalizeBtn, finalizing && styles.disabledBtn]}
@@ -328,6 +332,16 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
                   Failed step: {formatValue(errDetails.failedStep)} • {formatDate(errDetails.occurredAt)}
                 </Text>
               ) : null}
+              <View style={{ marginTop: Spacing.lg, alignSelf: 'stretch' }}>
+                <PostureHeatmap
+                  state="error"
+                  spots={[]}
+                  findings={[]}
+                  height={320}
+                  errorMessage={formatValue(errDetails.message)}
+                  onRetry={load}
+                />
+              </View>
               <TouchableOpacity style={[styles.finalizeBtn, { marginTop: Spacing.lg }]} activeOpacity={0.85} onPress={goToAssessTab}>
                 <Icon name="refresh" size={20} color={Colors.onPrimary} />
                 <Text style={styles.finalizeBtnText}>START A NEW ASSESSMENT</Text>
@@ -420,16 +434,19 @@ export default function AnalysisResultsScreen({ navigation, route }: any) {
       <Text style={[Typography.labelCaps, { color: Colors.onSurfaceVariant, marginBottom: Spacing.md }]}>
         POSTURE ERROR HEATMAP
       </Text>
-      {heatmapSpots.length > 0 ? (
-        <PostureHeatmap height={isMd ? 400 : 420} spots={heatmapSpots} findings={findings} />
-      ) : (
-        <View style={styles.emptySection}>
-          <Icon name="accessibility-new" size={40} color={Colors.onSurfaceVariant} />
-          <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: Spacing.sm, textAlign: 'center' }]}>
-            No heatmap data recorded for this session.
-          </Text>
-        </View>
-      )}
+      <PostureHeatmap
+        state={
+          isProcessing ? 'processing'
+          : isFailed || loadError ? 'error'
+          : 'ready'
+        }
+        errorMessage={loadError}
+        onRetry={load}
+        emptyMessage="No heatmap data recorded for this session."
+        height={isMd ? 400 : 420}
+        spots={heatmapSpots}
+        findings={findings}
+      />
     </View>
   );
 

@@ -15,16 +15,17 @@ import { Colors, Typography, Spacing, Glass } from '../../theme/colors';
 import { CONTAINER_MAX } from '../../theme/useResponsive';
 import SkeletonOverlay from '../../components/SkeletonOverlay';
 import { createAssessment, updateAssessmentStatus, getProfile } from '../../services/api';
-import * as FileSystem from 'expo-file-system';
 import { useIsOnline } from '../../hooks/useConnectivity';
 import {
   addQueuedAssessment,
   getQueuedAssessments,
+  removeQueuedAssessment,
+  updateQueuedAssessment,
   QueuedAssessment,
   QueuedSyncStatus
 } from '../../services/assessmentQueue';
 import { retryFailedSync, subscribeSyncEvents } from '../../services/syncEngine';
-import { assertEnoughStorageForRecording } from '../../services/storageManager';
+import { saveRecording, assertEnoughStorageForRecording } from '../../services/storageManager';
 import { loadSessionUser } from '../../services/session';
 
 const CAMERA_IMG =
@@ -60,7 +61,7 @@ const TEST_TYPES = [
   {
     value: 'posture_alignment',
     label: 'Posture Alignment',
-    blurb: 'Auditing static alignment, spinal neutrality and bilateral symmetry.'
+    blurb: 'Assessing static alignment, spinal neutrality and bilateral symmetry.'
   }
 ];
 
@@ -72,14 +73,14 @@ const VALIDATIONS = [
     iconColor: Colors.secondary,
     iconBg: 'rgba(87,223,254,0.2)',
     label: 'LIGHTING',
-    value: 'Optimal (840lx)'
+    value: 'Optimal (840 lx)'
   },
   {
     icon: 'straighten' as const,
     iconColor: Colors.onTertiaryContainer,
     iconBg: 'rgba(74,225,118,0.2)',
     label: 'DISTANCE',
-    value: '3.2m - Perfect'
+    value: '3.2 m - Perfect'
   },
   {
     icon: 'devices' as const,
@@ -101,13 +102,13 @@ const STEPS = [
   },
   {
     title: 'Completion',
-    text: 'Step out of frame to finalize processing. Results generate in < 10s.'
+    text: 'Step out of frame to finalize processing. Results are ready in under 10 seconds.'
   }
 ];
 
 const LIVE_METRICS = [
   { label: 'HIP ANGLE', value: '172.4°', color: '#ffffff' },
-  { label: 'LATERAL SWAY', value: '0.02m', color: Colors.secondaryFixed },
+  { label: 'LATERAL SWAY', value: '0.02 m', color: Colors.secondaryFixed },
   { label: 'HEART RATE', value: '94 BPM', color: '#ffffff' },
   { label: 'STABILITY', value: '98.2%', color: Colors.tertiaryFixed }
 ];
@@ -126,6 +127,14 @@ export default function StartAssessmentScreen({ navigation }: any) {
   const [queueItems, setQueueItems] = useState<QueuedAssessment[]>([]);
   const [retrying, setRetrying] = useState(false);
   const createdKeyRef = useRef('');
+  /**
+   * How the in-progress recording must be finished. 'offline' is STICKY: a
+   * recording started offline is saved locally even if connectivity returns
+   * mid-recording (otherwise the capture would be silently discarded).
+   */
+  const recordingModeRef = useRef<'online' | 'offline' | null>(null);
+  /** Double-submit guard for the local save path */
+  const savingRef = useRef(false);
   const pulse = useRef(new Animated.Value(1)).current;
   const [elapsedMs, setElapsedMs] = useState(0);
   const { width } = useWindowDimensions();
@@ -194,13 +203,35 @@ export default function StartAssessmentScreen({ navigation }: any) {
     }
   };
 
+  /**
+   * Status copy (Phase 8). The chip is the short label; the body is
+   * the user-facing state message. A locally-saved assessment is NEVER
+   * described as analyzed/completed.
+   */
   const syncChipFor = (status: QueuedSyncStatus): { text: string; color: string } => {
     switch (status) {
       case 'uploading': return { text: 'UPLOADING', color: Colors.secondary };
-      case 'processing': return { text: 'ANALYSIS', color: Colors.secondary };
+      case 'processing': return { text: 'PROCESSING', color: Colors.secondary };
       case 'completed': return { text: 'SYNCED', color: '#009844' };
       case 'failed': return { text: 'FAILED', color: Colors.error };
       default: return { text: 'WAITING', color: '#b26a00' };
+    }
+  };
+
+  const syncMessageFor = (item: QueuedAssessment, online: boolean): string => {
+    switch (item.syncStatus) {
+      case 'uploading':
+        return 'Uploading assessment…';
+      case 'processing':
+        return 'Assessment uploaded. Analysis in progress.';
+      case 'completed':
+        return 'Assessment synced.';
+      case 'failed':
+        return item.error || 'Synchronization failed.';
+      default: // pending
+        return online
+          ? 'Queued for upload…'
+          : 'Assessment saved. It will sync when you\u2019re back online.';
     }
   };
 
@@ -221,58 +252,58 @@ export default function StartAssessmentScreen({ navigation }: any) {
     return () => loop.stop();
   }, [pulse]);
 
-  // Writes a real local file reference for the offline capture (metadata sidecar).
-  // Insufficient storage surfaces a clear error instead of silently dropping data.
-  const writeLocalVideoReference = async (
-    key: string,
-    durationMs: number
-  ): Promise<string | null> => {
-    await assertEnoughStorageForRecording();
-    try {
-      const dir = `${FileSystem.cacheDirectory}offline-assessments`;
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      const uri = `${dir}${key}.json`;
-      await FileSystem.writeAsStringAsync(
-        uri,
-        JSON.stringify({
-          kind: 'talentscope-offline-recording',
-          recordedAt: new Date().toISOString(),
-          durationMs,
-          sport,
-          testType
-        })
-      );
-      const info = await FileSystem.getInfoAsync(uri);
-      return info.exists ? uri : null;
-    } catch {
-      return null;
-    }
-  };
-
   const finishOfflineSave = async () => {
+    if (savingRef.current) return; // double-submit guard (rapid STOP taps)
+    savingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
       if (!athleteId) throw new Error('Athlete profile not loaded yet. Please retry.');
       if (!createdKeyRef.current) createdKeyRef.current = `${athleteId}:${testType}:${Date.now()}`;
-      const videoRef = await writeLocalVideoReference(createdKeyRef.current, elapsedMs);
-      await addQueuedAssessment({
+
+      // 1. Queue the entry first (durable, idempotency-keyed).
+      const entry = await addQueuedAssessment({
         athleteId,
         sport,
         testType,
         category: sport,
-        localVideoUri: videoRef,
         idempotencyKey: createdKeyRef.current
       });
+      // 2. Persist the recording via storageManager: atomic write, stable
+      //    filename derived from the entry key + localId, integrity verified.
+      const saved = await saveRecording(entry.idempotencyKey, entry.localId, {
+        kind: 'talentscope-offline-recording',
+        recordedAt: new Date().toISOString(),
+        durationMs: elapsedMs,
+        sport,
+        testType
+      });
+      if (saved.ok && saved.uri) {
+        await updateQueuedAssessment(entry.localId, { localVideoUri: saved.uri });
+      } else if (saved.error && saved.error !== 'insufficient_storage') {
+        // Recording could not be persisted: keep the queue entry metadata-only
+        // (sync still possible) but surface the failure honestly.
+        setError(`Assessment saved, but the recording could not be stored (${saved.message || 'unknown error'}). It will sync without video data.`);
+      } else if (saved.error === 'insufficient_storage') {
+        // Not enough space to keep any recording: roll back the queue entry so
+        // the user does not end up with a phantom "saved" assessment.
+        await removeQueuedAssessment(entry.localId);
+        throw new Error(saved.message || 'Not enough storage on this device.');
+      }
+
       const q = await getQueuedAssessments();
       const pending = q.filter(x => x.syncStatus !== 'completed').length;
       setPendingSyncCount(pending);
+      setQueueItems(q); // show the pending-sync card immediately (offline there are no sync events to trigger refresh)
+      // Clear status: SAVED LOCALLY ONLY — not analyzed, not completed.
       setOfflineSaved({ pendingCount: pending });
       setRecording(false);
       setElapsedMs(0);
+      recordingModeRef.current = null;
     } catch (e) {
       setRecording(false);
       setElapsedMs(0);
+      recordingModeRef.current = null;
       const msg = e instanceof Error ? e.message : 'Local save failed';
       setError(
         msg.includes('Duplicate')
@@ -280,6 +311,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
           : `Offline save failed: ${msg}`
       );
     } finally {
+      savingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -296,10 +328,17 @@ export default function StartAssessmentScreen({ navigation }: any) {
       }
       setSubmitting(true);
       try {
+        // Fail fast: check available storage BEFORE the user records something
+        // that cannot be stored (insufficient space surfaces up-front).
+        await assertEnoughStorageForRecording();
         createdKeyRef.current = `${athleteId}:${testType}:${Date.now()}`;
-        setInfo('OFFLINE — this assessment will be saved to your device');
+        recordingModeRef.current = 'offline';
+        setInfo('Offline — this assessment will be saved to your device and synced later');
         setRecording(true);
         setElapsedMs(0);
+      } catch (e: any) {
+        setError(e?.message || 'Not enough storage on this device. Free up space and try again.');
+        recordingModeRef.current = null;
       } finally {
         setSubmitting(false);
       }
@@ -321,6 +360,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
       await updateAssessmentStatus(assessmentId, 'processing');
       setRecording(false);
       setElapsedMs(0);
+      recordingModeRef.current = null;
       navigation.navigate('AnalysisResults', { assessmentId });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start assessment. Please try again.');
@@ -330,12 +370,27 @@ export default function StartAssessmentScreen({ navigation }: any) {
   };
 
   const onStopRecording = () => {
-    if (!isOnline && recording) {
+    // A recording STARTED offline is finished offline (sticky mode): network
+    // returning mid-recording must not discard the capture or hit the API.
+    if (recording && recordingModeRef.current === 'offline') {
       void finishOfflineSave();
       return;
     }
     setRecording(false);
     setElapsedMs(0);
+    recordingModeRef.current = null;
+  };
+
+  /** User explicitly cancels the in-progress assessment: discard it entirely
+   *  (nothing queued, nothing stored, no server call). */
+  const onCancelRecording = () => {
+    if (submitting) return;
+    setRecording(false);
+    setElapsedMs(0);
+    recordingModeRef.current = null;
+    createdKeyRef.current = '';
+    setInfo(null);
+    setError(null);
   };
 
   const formatTime = () => {
@@ -397,9 +452,10 @@ export default function StartAssessmentScreen({ navigation }: any) {
           <TouchableOpacity
             style={[styles.circleGlassBtn, submitting && styles.disabled]}
             disabled={submitting}
-            onPress={onStopRecording}
+            onPress={recording ? onCancelRecording : onStopRecording}
+            accessibilityLabel={recording ? 'Cancel assessment' : 'Restart assessment'}
           >
-            <Icon name="refresh" size={22} color={Colors.primary} />
+            <Icon name={recording ? 'close' : 'refresh'} size={22} color={recording ? Colors.error : Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.85}
@@ -434,8 +490,8 @@ export default function StartAssessmentScreen({ navigation }: any) {
       <Icon name="save" size={44} color={Colors.secondaryFixed ?? Colors.secondary} />
       <Text style={styles.savedTitle}>ASSESSMENT SAVED OFFLINE</Text>
       <Text style={styles.savedBody}>
-        Assessment saved. Waiting for connection.{'\n'}It has not been analyzed yet — results
-        will appear once you're back online.
+        Assessment saved. It will sync when you're back online.{'\n'}It has not been analyzed yet — results
+        will appear once it syncs and analysis finishes.
       </Text>
       <View style={styles.savedPill}>
         <Text style={styles.savedPillText}>
@@ -585,7 +641,7 @@ export default function StartAssessmentScreen({ navigation }: any) {
           onPress={startAssessment}
         >
           <Text style={styles.historicalBtnText}>
-            {submitting ? 'STARTING SESSION...' : 'START RECORDED SESSION'}
+            {submitting ? 'STARTING SESSION...' : 'START RECORDING SESSION'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -672,21 +728,24 @@ export default function StartAssessmentScreen({ navigation }: any) {
               ) : null}
             </View>
             <Text style={styles.syncSubtitle}>
-              {isOnline ? 'Connected â€” syncing automatically' : 'Offline â€” assessments will sync when connected'}
+              {isOnline ? 'Connected — syncing automatically' : 'Offline — assessments will sync when connected'}
             </Text>
             {queueItems.map(item => {
               const chip = syncChipFor(item.syncStatus);
+              const message = syncMessageFor(item, isOnline);
+              const isFailedRow = item.syncStatus === 'failed';
               return (
                 <View key={item.localId} style={styles.syncRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.syncRowTitle}>
-                      {[String(item.testType || '').replace(/_/g, ' '), item.sport].filter(Boolean).join(' â€¢ ')}
+                      {[String(item.testType || '').replace(/_/g, ' '), item.sport].filter(Boolean).join(' • ')}
                     </Text>
-                    {item.error ? (
-                      <Text style={styles.syncRowError} numberOfLines={2}>
-                        {item.error}
-                      </Text>
-                    ) : null}
+                    <Text
+                      style={isFailedRow ? styles.syncRowError : styles.syncRowMessage}
+                      numberOfLines={2}
+                    >
+                      {message}
+                    </Text>
                   </View>
                   <View style={[styles.statusChipSm, { backgroundColor: `${chip.color}22` }]}>
                     <Text style={[styles.statusChipSmText, { color: chip.color }]}>{chip.text}</Text>
@@ -817,6 +876,7 @@ const styles = StyleSheet.create({
   },
   syncRowTitle: { ...Typography.bodyMd, fontWeight: '600', color: Colors.onSurface, flex: 1 },
   syncRowError: { ...Typography.bodyMd, fontSize: 11, color: Colors.error },
+  syncRowMessage: { ...Typography.bodyMd, fontSize: 11, color: Colors.onSurfaceVariant },
   statusChipSm: { borderRadius: 999, paddingHorizontal: Spacing.sm, paddingVertical: 3 },
   statusChipSmText: { ...Typography.labelCaps, fontSize: 9 },
   savedTitle: { ...Typography.headlineMd, color: Colors.onSurface, textAlign: 'center' },

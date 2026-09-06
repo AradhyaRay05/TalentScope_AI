@@ -101,7 +101,7 @@ export default function ProgressScreen({ navigation }: any) {
       iconBg: Colors.tertiaryFixed,
       iconColor: Colors.onTertiaryFixed,
       title: 'First Assessment',
-      detail: `${firstRecord.testType || 'Assessment'} • ${firstRecord.date}`
+      detail: `${firstRecord.testType ? String(firstRecord.testType).replace(/_/g, ' ') : 'Assessment'} • ${firstRecord.date}`
     });
   }
   milestones.push({
@@ -120,7 +120,7 @@ export default function ProgressScreen({ navigation }: any) {
       iconBg: Colors.secondaryFixed,
       iconColor: Colors.onSecondaryContainer,
       title: 'Latest Assessment',
-      detail: `${latestRecord.testType || 'Assessment'} • ${latestRecord.date}`
+      detail: `${latestRecord.testType ? String(latestRecord.testType).replace(/_/g, ' ') : 'Assessment'} • ${latestRecord.date}`
     });
   }
   milestones.push({

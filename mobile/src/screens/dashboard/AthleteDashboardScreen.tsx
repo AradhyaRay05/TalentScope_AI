@@ -106,6 +106,24 @@ export default function AthleteDashboardScreen({ navigation }: any) {
   const latestAssessment = dashboard?.latestAssessment ?? null;
   const score = typeof latestAssessment?.overallScore === 'number' ? latestAssessment.overallScore : null;
   const percentileRank = latestAssessment?.percentileRank ?? null;
+  // percentileRank may be a number (91) or a preformatted string ("Top 5%"):
+  // numbers get a real ordinal suffix, strings render verbatim.
+  const ordinalSuffix = (n: number): string => {
+    const mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 13) return 'TH';
+    switch (n % 10) {
+      case 1: return 'ST';
+      case 2: return 'ND';
+      case 3: return 'RD';
+      default: return 'TH';
+    }
+  };
+  const percentileLabel =
+    typeof percentileRank === 'number'
+      ? `${percentileRank}${ordinalSuffix(percentileRank)} PERCENTILE`
+      : percentileRank != null && String(percentileRank).trim() !== ''
+        ? `${String(percentileRank)} PERCENTILE`
+        : null;
   const injuryLevel = latestAssessment?.injuryRisk?.level ?? profile?.currentInjuryRiskLevel ?? null;
   const injuryPct =
     typeof latestAssessment?.injuryRisk?.percentage === 'number'
@@ -200,7 +218,7 @@ export default function AthleteDashboardScreen({ navigation }: any) {
                 <Text style={styles.pendingSyncBody}>
                   {pendingSyncCount > 0
                     ? `${pendingSyncCount} waiting to sync • Open Assess for details`
-                    : 'Recording works without connection'}
+                    : 'Recording works without a connection'}
                 </Text>
               </View>
               <Icon name="chevron-right" size={20} color={Colors.onSurfaceVariant} />
@@ -211,7 +229,7 @@ export default function AthleteDashboardScreen({ navigation }: any) {
             <TouchableOpacity
               style={[styles.quickActionCard, { backgroundColor: Colors.primary }]}
               activeOpacity={0.85}
-              onPress={() => navigation.navigate('StartAssessment')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Assess' })}
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.quickActionLabelLight}>PRO ASSESSMENT</Text>
@@ -261,8 +279,8 @@ export default function AthleteDashboardScreen({ navigation }: any) {
                 {score !== null ? (
                   <CircularScoreGauge size={isMd ? 192 : 176} strokeWidth={isMd ? 9 : 10} score={score} rotate>
                     <Text style={styles.gaugeScore}>{score}</Text>
-                    {percentileRank != null && (
-                      <Text style={styles.gaugePercentile}>{percentileRank}TH PERCENTILE</Text>
+                    {percentileLabel != null && (
+                      <Text style={styles.gaugePercentile}>{percentileLabel}</Text>
                     )}
                   </CircularScoreGauge>
                 ) : (

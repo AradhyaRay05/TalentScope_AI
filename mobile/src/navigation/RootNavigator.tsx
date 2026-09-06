@@ -15,8 +15,9 @@ import InjuryRiskScreen from '../screens/assessment/InjuryRiskScreen';
 import ProgressScreen from '../screens/progress/ProgressScreen';
 import CoachProfileScreen from '../screens/marketplace/CoachProfileScreen';
 import { Colors } from '../theme/colors';
-import { loadSessionToken, clearSession } from '../services/session';
+import { loadSessionToken, loadSessionUser, clearSession } from '../services/session';
 import { setAuthToken, getProfile } from '../services/api';
+import { getNetworkStatus } from '../services/network';
 import { initNetworkListener } from '../services/network';
 import { initSyncEngine } from '../services/syncEngine';
 import OfflineBanner from '../components/OfflineBanner';
@@ -38,13 +39,34 @@ export default function RootNavigator() {
         const token = await loadSessionToken();
         if (token) {
           setAuthToken(token);
-          const res = await getProfile();
-          const user = res?.data?.user || res?.user || null;
-          setInitialRoute(user?.role === 'coach' ? 'CoachDashboard' : 'MainTabs');
+          let role: string | undefined;
+          try {
+            const res = await getProfile();
+            const user = res?.data?.user || res?.user || null;
+            role = user?.role;
+          } catch (e: any) {
+            // Distinguish session-expiry (401: token genuinely invalid -> log
+            // out) from backend unreachability (network error / 5xx: KEEP the
+            // session and route from the cached user — logging a user out just
+            // because the server is down would be wrong and would also kill
+            // pending offline sync).
+            if (e?.status === 401 || e?.status === 403) {
+              await clearSession();
+              setAuthToken(null);
+              setBooting(false);
+              return;
+            }
+            // server unreachable: fall through to the cached session user
+          }
+          if (!role) {
+            const cached = await loadSessionUser();
+            role = cached?.role;
+          }
+          setInitialRoute(role === 'coach' ? 'CoachDashboard' : 'MainTabs');
         }
       } catch {
-        await clearSession();
-        setAuthToken(null);
+        // storage-level failure only -> nothing to protect
+        setInitialRoute('Landing');
       } finally {
         setBooting(false);
       }

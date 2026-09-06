@@ -42,8 +42,8 @@ const FEATURES = [
 ] as const;
 
 const STEPS = [
-  { num: '01', title: 'Setup', text: 'Position your phone 10 feet away from your workout area.' },
-  { num: '02', title: 'Record', text: 'Perform your routine as normal while AI tracks 25+ joint points.' },
+  { num: '01', title: 'Setup', text: 'Position your phone 3 meters (~10 feet) away from your workout area.' },
+  { num: '02', title: 'Record', text: 'Perform your routine as usual while AI tracks 25+ joint points.' },
   { num: '03', title: 'Process', text: 'Our neural networks analyze biomechanics in under 60 seconds.' },
   { num: '04', title: 'Review', text: 'Get a comprehensive score based on speed, form, and risk.' },
   { num: '05', title: 'Connect', text: 'Optional: Share your data with a certified TalentScope coach.' },
@@ -150,7 +150,7 @@ export default function LandingScreen({ navigation }: any) {
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Login')}
         >
-          <Text style={styles.loginBtnText}>SignUp / Login</Text>
+          <Text style={styles.loginBtnText}>Sign Up / Login</Text>
         </TouchableOpacity>
       </View>
 
@@ -203,7 +203,7 @@ export default function LandingScreen({ navigation }: any) {
                     </View>
                     <View style={[styles.glassChip, { alignItems: 'flex-end' }]}>
                       <Text style={styles.chipLabelError}>STRESS ALERT</Text>
-                      <Text style={styles.monoData}>L-ANKLE: HIGH</Text>
+                      <Text style={styles.monoData}>LEFT ANKLE: HIGH</Text>
                     </View>
                   </View>
                   <View style={styles.liveAnalysisCard}>
@@ -228,7 +228,7 @@ export default function LandingScreen({ navigation }: any) {
                   <Icon name="biotech" size={40} color={Colors.secondary} />
                   <Text style={styles.pillarTitle}>AI Biomechanics</Text>
                   <Text style={styles.pillarBody}>
-                    Proprietary vision models dissect movement with sub-millimeter accuracy for elite optimization.
+                    Proprietary vision models analyze movement with sub-millimeter accuracy for elite optimization.
                   </Text>
                 </View>,
                 <View key="p2" style={[styles.pillarCard, { backgroundColor: Colors.secondary }]}>
@@ -375,7 +375,7 @@ export default function LandingScreen({ navigation }: any) {
                   <Text style={styles.tierLabel}>BASIC</Text>
                   <Text style={styles.tierPrice}>Free</Text>
                   <View style={styles.tierFeatures}>
-                    <TierFeature text="3 Assessments/Mo" included />
+                    <TierFeature text="3 Assessments/mo" included />
                     <TierFeature text="Basic Form Scoring" included />
                     <TierFeature text="Injury Risk Reports" included={false} />
                   </View>
@@ -398,7 +398,7 @@ export default function LandingScreen({ navigation }: any) {
                     <TierFeature dark text="Full Marketplace Access" included />
                   </View>
                   <TouchableOpacity style={styles.proUnlockBtn} onPress={() => navigation.navigate('Signup')}>
-                    <Text style={styles.proUnlockText}>Unlock Pro</Text>
+                    <Text style={styles.proUnlockText}>Unlock Elite</Text>
                   </TouchableOpacity>
                 </View>,
                 <View key="team" style={styles.tierCard}>
@@ -525,8 +525,8 @@ export default function LandingScreen({ navigation }: any) {
           <BottomNavItem icon="home" label="Home" active onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
           <BottomNavItem icon="bolt" label="Features" onPress={() => goTo('features')} />
           <BottomNavItem icon="payments" label="Plans" onPress={() => goTo('plans')} />
-          <BottomNavItem icon="code" label="Devs" onPress={() => goTo('developers')} />
-          <BottomNavItem icon="person" label="Login" onPress={() => navigation.navigate('Login')} />
+          <BottomNavItem icon="code" label="Developers" onPress={() => goTo('developers')} />
+          <BottomNavItem icon="person" label="Log In" onPress={() => navigation.navigate('Login')} />
         </View>
       )}
     </View>

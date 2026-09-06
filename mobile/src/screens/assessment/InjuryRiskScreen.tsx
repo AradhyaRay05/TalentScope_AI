@@ -2,30 +2,30 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ImageBackground,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
   useWindowDimensions
 } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '../../theme/colors';
 import { CONTAINER_MAX } from '../../theme/useResponsive';
 import CircularScoreGauge from '../../components/CircularScoreGauge';
+import { BodyHeatmap, HeatmapLegend, buildHeatmapSpotsFromAssessment } from '../../components/PostureHeatmap';
 import { getProfile, getLatestAssessment } from '../../services/api';
+import {
+  buildRiskVisualization,
+  buildRiskFactors,
+  buildRiskInsights,
+  buildExerciseList,
+  RiskFactorView,
+  RiskInsightView,
+  ExerciseView
+} from '../../services/riskVisualization';
 
 const POSE_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuA7j8p7NlraUHdQtInbPd90itWAhI1-i8THBDHNUPzFgAKBjxgJ_P6DxAugRfksr0tx75GYq2zDxH-fyuOOTtJoHTHazf4hSuQBsDJXW4Q01aJjFvpqcSmXFSfgiaRJr6osJvUp5KohAumvIpBN4JX6HP4QT8q4rGmWMtlp3n7Buf-2XU2DPTK2j95qk2vXe7TPYtOtf_Cs4lcpsHIRpwClppGuY4UYbwmA9kLWsPaY99UF1fI-Z61x3h6pOhIQgrklAKQd0skVbKY';
-
-type RiskFactor = {
-  icon: 'balance' | 'bolt' | 'fitness-center' | 'speed';
-  badge: string;
-  title: string;
-  body: string;
-  percent: number;
-};
 
 type Insight = {
   icon: 'error' | 'warning' | 'check-circle';
@@ -34,7 +34,12 @@ type Insight = {
   body: string;
 };
 
-type Exercise = { name: string; detail: string };
+/** Semantic tone -> screen icon/color tokens (presentation only). */
+const INSIGHT_STYLE: Record<RiskInsightView['tone'], { icon: Insight['icon']; color: string }> = {
+  critical: { icon: 'error', color: Colors.error },
+  warning: { icon: 'warning', color: Colors.secondary },
+  ok: { icon: 'check-circle', color: Colors.secondary }
+};
 
 export default function InjuryRiskScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
@@ -66,65 +71,29 @@ export default function InjuryRiskScreen({ navigation }: any) {
     fetchData();
   }, [fetchData]);
 
-  const risk = latest?.injuryRiskClassification || null;
-  const riskPct: number | null =
-    typeof risk?.riskPercentage === 'number'
-      ? risk.riskPercentage
-      : typeof profile?.currentInjuryRiskPercentage === 'number'
-        ? profile.currentInjuryRiskPercentage
-        : null;
-  const riskLevel: string | null = risk?.riskStatus || profile?.currentInjuryRiskLevel || null;
+  // ---- risk data: all mapping lives in the finalized visualization
+  // contract (services/riskVisualization); this screen only renders it. ----
+  const viz = buildRiskVisualization(latest, profile ?? undefined);
+  const riskPct: number | null = viz.overall.percentage;
+  const riskLevel: string | null = viz.overall.level;
 
-  const factors: RiskFactor[] = risk
-    ? [
-        {
-          icon: 'balance',
-          badge: `${typeof risk.asymmetryScore === 'number' ? risk.asymmetryScore : '--'}/100`,
-          title: 'Asymmetry',
-          body: 'Left-to-right force distribution in kinetic chain transitions.',
-          percent: typeof risk.asymmetryScore === 'number' ? risk.asymmetryScore : 0
-        },
-        {
-          icon: 'bolt',
-          badge: `${typeof risk.fatigueIndex === 'number' ? risk.fatigueIndex : '--'}/100`,
-          title: 'Fatigue',
-          body: 'Neural drive efficiency and metabolic recovery index.',
-          percent: typeof risk.fatigueIndex === 'number' ? risk.fatigueIndex : 0
-        },
-        {
-          icon: 'fitness-center',
-          badge: `${typeof risk.jointStress === 'number' ? risk.jointStress : '--'}/100`,
-          title: 'Joint Stress',
-          body: 'Compressive load monitoring at knees, ankles, and lumbar.',
-          percent: typeof risk.jointStress === 'number' ? risk.jointStress : 0
-        },
-        {
-          icon: 'speed',
-          badge: `${typeof risk.movementDeficiency === 'number' ? risk.movementDeficiency : '--'}/100`,
-          title: 'Movement Deficiency',
-          body: 'Kinetic deviations from elite-level performance baselines.',
-          percent: typeof risk.movementDeficiency === 'number' ? risk.movementDeficiency : 0
-        }
-      ]
-    : [];
+  const factors: RiskFactorView[] = buildRiskFactors(latest);
 
-  const insights: Insight[] = (latest?.criticalWarnings || []).map((w: any) => ({
-    icon: w.severity === 'Critical' ? ('error' as const) : w.severity === 'Moderate' ? ('warning' as const) : ('check-circle' as const),
-    color: w.severity === 'Critical' ? Colors.error : Colors.secondary,
-    title: w.warningType,
-    body: `${w.detail}${w.phase ? ` • Detected during ${w.phase}` : ''}${
-      typeof w.angleDeviationDeg === 'number' && w.angleDeviationDeg !== 0
-        ? ` (${Math.abs(w.angleDeviationDeg)}° deviation)`
-        : ''
-    }`
+  const insights: Insight[] = buildRiskInsights(latest).map(ins => ({
+    icon: INSIGHT_STYLE[ins.tone].icon,
+    color: INSIGHT_STYLE[ins.tone].color,
+    title: ins.title,
+    body: ins.body
   }));
 
-  const exercises: Exercise[] = (latest?.recommendations || []).map((r: any) => ({
-    name: r.title,
-    detail: `${r.sets || '3 Sets'} • ${r.reps || '15 Reps'}${r.priority ? ` • ${r.priority} priority` : ''}`
-  }));
+  const exercises: ExerciseView[] = buildExerciseList(latest);
 
-  const kinematics = latest?.jointKinematics || null;
+  const kinematics = viz.meta.kinematics;
+  const hasKinematics =
+    kinematics.kneeFlexionAngleDeg !== null || kinematics.spineAngleDeg !== null;
+
+  // Contract-driven heatmap markers for the body diagram (Step 5).
+  const heatmapSpots = buildHeatmapSpotsFromAssessment(latest);
 
   const grid = (nodes: React.ReactNode[], cols: number, gap: number) => {
     if (cols <= 1) return <View style={{ gap }}>{nodes}</View>;
@@ -148,7 +117,7 @@ export default function InjuryRiskScreen({ navigation }: any) {
     );
   };
 
-  const renderFactor = (f: RiskFactor) => (
+  const renderFactor = (f: RiskFactorView) => (
     <View key={f.title} style={[styles.factorCard, isMd && { width: '100%' }]}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={styles.factorIconBox}>
@@ -164,7 +133,7 @@ export default function InjuryRiskScreen({ navigation }: any) {
     </View>
   );
 
-  const renderExercise = (ex: Exercise) => (
+  const renderExercise = (ex: ExerciseView) => (
     <TouchableOpacity key={ex.name} style={[styles.exerciseCard, isMd && { width: '100%' }]} activeOpacity={0.8}>
       <View style={styles.exerciseIconBox}>
         <Icon name="fitness-center" size={26} color={Colors.secondary} />
@@ -215,7 +184,7 @@ export default function InjuryRiskScreen({ navigation }: any) {
           )}
           <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: Spacing.base, marginTop: Spacing.md }]}>
             {latest
-              ? `Based on ${latest.testType || 'your most recent'} assessment ${latest.assessmentCode || ''}`.trim()
+              ? `Based on ${latest.testType ? String(latest.testType).replace(/_/g, ' ') : 'your most recent'} assessment ${latest.assessmentCode || ''}`.trim()
               : 'Based on your most recent completed assessment.'}
           </Text>
         </>
@@ -226,41 +195,36 @@ export default function InjuryRiskScreen({ navigation }: any) {
   const biometricCard = (
     <View style={[styles.biometricCard, isLg && { flex: 1 }]}>
       <View style={styles.overlayTagWrap}>
-        <Text style={styles.overlayTag}>LIVE BIOMETRIC OVERLAY</Text>
+        <Text style={styles.overlayTag}>BIOMETRIC OVERLAY</Text>
+        <HeatmapLegend spots={heatmapSpots} overlay />
       </View>
       <View style={styles.metricChipsRow}>
         <View style={styles.metricChip}>
           <Text style={styles.metricChipLabel}>KNEE ANGLE</Text>
           <Text style={styles.metricChipValue}>
-            {kinematics && typeof kinematics.kneeFlexionAngle === 'number' ? `${kinematics.kneeFlexionAngle}°` : '--'}
+            {kinematics.kneeFlexionAngleDeg !== null ? `${kinematics.kneeFlexionAngleDeg}°` : '--'}
           </Text>
         </View>
         <View style={styles.metricChip}>
           <Text style={styles.metricChipLabel}>SPINE ANGLE</Text>
           <Text style={styles.metricChipValue}>
-            {kinematics && typeof kinematics.spineAngle === 'number' ? `${kinematics.spineAngle}°` : '--'}
+            {kinematics.spineAngleDeg !== null ? `${kinematics.spineAngleDeg}°` : '--'}
           </Text>
         </View>
       </View>
       <View style={styles.poseArea}>
-        <ImageBackground source={{ uri: POSE_IMG }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        <Svg viewBox="0 0 1000 600" style={StyleSheet.absoluteFill} preserveAspectRatio="xMidYMid slice">
-          <Line x1="450" y1="180" x2="420" y2="280" stroke="#57dffe" strokeWidth={2} strokeOpacity={0.5} />
-          <Line x1="550" y1="180" x2="580" y2="280" stroke="#57dffe" strokeWidth={2} strokeOpacity={0.5} />
-          <Line x1="500" y1="180" x2="500" y2="350" stroke="#57dffe" strokeWidth={2} strokeOpacity={0.5} />
-          <Line x1="500" y1="350" x2="460" y2="480" stroke="#57dffe" strokeWidth={2} strokeOpacity={0.5} />
-          <Line x1="500" y1="350" x2="540" y2="480" stroke="#57dffe" strokeWidth={2} strokeOpacity={0.5} />
-          {[
-            [500, 150],
-            [450, 180],
-            [550, 180],
-            [500, 350],
-            [460, 480],
-            [540, 480]
-          ].map(([cx, cy], i) => (
-            <Circle key={`joint-${i}`} cx={cx} cy={cy} r={4} fill="#ffffff" stroke="#57dffe" strokeWidth={1} />
-          ))}
-        </Svg>
+        <BodyHeatmap
+          imageUrl={POSE_IMG}
+          spots={heatmapSpots}
+          state={loading ? 'loading' : error ? 'error' : 'ready'}
+          errorMessage={error}
+          onRetry={fetchData}
+          emptyMessage={
+            !latest
+              ? 'COMPLETE AN ASSESSMENT TO SEE YOUR JOINT HEATMAP'
+              : 'NO JOINT STRAIN RECORDED FOR THIS ASSESSMENT'
+          }
+        />
       </View>
     </View>
   );
@@ -296,7 +260,7 @@ export default function InjuryRiskScreen({ navigation }: any) {
         <Icon name="medical-services" size={130} color="rgba(255,255,255,0.1)" />
       </View>
       <Text style={[Typography.labelCaps, { color: Colors.secondaryContainer, marginBottom: Spacing.xs }]}>
-        TALENT SCOPE AI ELITE
+        TALENTSCOPE AI ELITE
       </Text>
       <Text style={[Typography.headlineMd, { fontSize: 20, lineHeight: 26, marginBottom: Spacing.base }]}>
         Customized Protocols
@@ -617,7 +581,17 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 4
   },
-  overlayTagWrap: { position: 'absolute', top: Spacing.md, left: Spacing.md, zIndex: 10 },
+  overlayTagWrap: {
+    position: 'absolute',
+    top: Spacing.md,
+    left: Spacing.md,
+    right: Spacing.md,
+    zIndex: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.sm
+  },
   overlayTag: {
     ...Typography.labelCaps,
     fontSize: 10,

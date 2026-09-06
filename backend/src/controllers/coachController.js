@@ -597,6 +597,8 @@ exports.getMyAthleteInjuryRisk = async (req, res) => {
         athleteName: athlete.name,
         source: latestCompleted ? 'assessment' : athlete.currentInjuryRiskPercentage != null ? 'profile' : 'none',
         lastAssessmentCode: latestCompleted?.assessmentCode || null,
+        testType: latestCompleted?.testType || null,
+        sport: latestCompleted?.sport || null,
         evaluatedAt: latestCompleted?.completedAt || null,
         risk: latestCompleted
           ? {
@@ -611,7 +613,13 @@ exports.getMyAthleteInjuryRisk = async (req, res) => {
               level: athlete.currentInjuryRiskLevel ?? null,
               percentage: athlete.currentInjuryRiskPercentage ?? null
             },
-        criticalWarnings: latestCompleted?.criticalWarnings || []
+        criticalWarnings: latestCompleted?.criticalWarnings || [],
+        // Joint-level strain data — passthrough of stored fields (no AI work
+        // here): consumed by the finalized risk-visualization contract.
+        heatmapSpots: latestCompleted?.heatmapSpots || [],
+        jointKinematics: latestCompleted?.jointKinematics || null,
+        aiMetadata: latestCompleted?.aiMetadata || null,
+        aiInsights: latestCompleted?.aiInsights || []
       }
     });
   } catch (error) {

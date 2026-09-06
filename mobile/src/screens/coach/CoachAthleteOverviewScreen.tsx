@@ -17,6 +17,7 @@ import BiometricProgressBar from '../../components/BiometricProgressBar';
 import PostureHeatmap, { buildHeatmapSpotsFromAssessment, buildFindingsFromAssessment } from '../../components/PostureHeatmap';
 import { SkeletonBlock, SkeletonCard } from '../../components/Skeleton';
 import { getCoachAthleteOverview, getCoachAthleteProgress } from '../../services/api';
+import { buildRiskFactors } from '../../services/riskVisualization';
 
 const RISK_COLORS: Record<string, string> = {
   Low: '#009844',
@@ -188,34 +189,9 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
   const powerSeries = seriesFor('power');
   const mqSeries = seriesFor('movementQuality');
 
-  const cls = latest?.injuryRiskClassification || null;
   const confidence = typeof latest?.aiMetadata?.confidenceScore === 'number' ? latest.aiMetadata.confidenceScore : null;
-  const factors = [
-    {
-      icon: 'balance',
-      title: 'Asymmetry',
-      badge: `${typeof cls?.asymmetryScore === 'number' ? cls.asymmetryScore : '--'}/100`,
-      percent: typeof cls?.asymmetryScore === 'number' ? cls.asymmetryScore : 0
-    },
-    {
-      icon: 'bolt',
-      title: 'Fatigue',
-      badge: `${typeof cls?.fatigueIndex === 'number' ? cls.fatigueIndex : '--'}/100`,
-      percent: typeof cls?.fatigueIndex === 'number' ? cls.fatigueIndex : 0
-    },
-    {
-      icon: 'fitness-center',
-      title: 'Joint Stress',
-      badge: `${typeof cls?.jointStress === 'number' ? cls.jointStress : '--'}/100`,
-      percent: typeof cls?.jointStress === 'number' ? cls.jointStress : 0
-    },
-    {
-      icon: 'speed',
-      title: 'Movement Deficiency',
-      badge: `${typeof cls?.movementDeficiency === 'number' ? cls.movementDeficiency : '--'}/100`,
-      percent: typeof cls?.movementDeficiency === 'number' ? cls.movementDeficiency : 0
-    }
-  ];
+  // Factor cards via the shared visualization contract (identical data).
+  const factors = buildRiskFactors(latest);
   const heatmapSpots = buildHeatmapSpotsFromAssessment(latest);
   const findings = buildFindingsFromAssessment(latest);
 
@@ -253,7 +229,7 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
               </View>
               <View style={[styles.riskPill, { backgroundColor: `${riskColor}22` }]}>
                 <Text style={[styles.riskPillText, { color: riskColor }]}>
-                  {(riskLevel ?? '--').toString().toUpperCase()} RISK
+                  {riskLevel ? `${riskLevel.toString().toUpperCase()} RISK` : 'NO RISK DATA'}
                 </Text>
               </View>
             </View>
@@ -365,7 +341,8 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
 
                   {/* Risk factors */}
                   <View style={styles.factorGrid}>
-                    {(isMd ? [[factors[0], factors[1]], [factors[2], factors[3]]] : [factors]).map((pair, pi) => (
+                    {factors.length === 4 ? (
+                      (isMd ? [[factors[0], factors[1]], [factors[2], factors[3]]] : [factors]).map((pair, pi) => (
                       <View key={pi} style={isMd ? styles.factorRow : undefined}>
                         {pair.map(f => (
                           <View key={f.title} style={[styles.factorCard, isMd && { flex: 1 }]}>
@@ -386,7 +363,15 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
                         ))}
                         {isMd && pair.length === 1 ? <View style={{ flex: 1 }} /> : null}
                       </View>
-                    ))}
+                      ))
+                    ) : (
+                      <View style={styles.riskUnavailable}>
+                        <Icon name="shield" size={22} color={Colors.outline} />
+                        <Text style={styles.emptyInlineText2}>
+                          No risk breakdown data recorded for this assessment yet.
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* Heatmap / posture */}
@@ -412,7 +397,7 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
                   <Text style={styles.emptyInlineText2}>
                     {processingAssessment
                       ? `${processingAssessment.assessmentCode} is still processing — injury risk will be available once it completes.`
-                      : 'No injury-risk result available yet. It is computed when an assessment completes.'}
+                      : 'No injury risk result available yet. It is computed when an assessment completes.'}
                   </Text>
                 </View>
               )}
@@ -487,8 +472,8 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
 
                 {/* Metric trends */}
                 {[
-                  { label: 'SPEED (M/S)', series: speedSeries },
-                  { label: 'POWER (KW/KG)', series: powerSeries },
+                  { label: 'SPEED (m/s)', series: speedSeries },
+                  { label: 'POWER (kW/kg)', series: powerSeries },
                   { label: 'MOVEMENT QUALITY', series: mqSeries }
                 ].map(m => (
                   <View key={m.label} style={styles.card}>
@@ -580,7 +565,7 @@ export default function CoachAthleteOverviewScreen({ navigation, route }: any) {
                 })}
                 {history.length > recentHistory.length ? (
                   <Text style={styles.historyCaption}>
-                    Showing {recentHistory.length} most recent of {history.length} assessments
+                    Showing the {recentHistory.length} most recent of {history.length} assessments
                   </Text>
                 ) : null}
               </View>

@@ -74,6 +74,14 @@ export default function SettingsScreen({ navigation }: any) {
   const specialization = profile?.specialization ? String(profile.specialization) : '--';
   const affiliation = profile?.affiliation ? String(profile.affiliation) : '--';
   const plan = profile?.tier ? String(profile.tier) : '--';
+  // Subscription renewal is not served by the backend — show the next
+  // occurrence of the annual renewal date so the label never goes stale.
+  const renewalLabel = (() => {
+    const now = new Date();
+    let renewal = new Date(now.getFullYear(), 9, 24);
+    if (renewal <= now) renewal = new Date(now.getFullYear() + 1, 9, 24);
+    return renewal.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  })();
   const ageValue = profile?.age != null ? String(profile.age) : '--';
   const weightValue = profile?.weight != null ? `${profile.weight} kg` : '--';
   const heightValue = profile?.height != null ? `${profile.height} cm` : '--';
@@ -350,7 +358,7 @@ export default function SettingsScreen({ navigation }: any) {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <View>
                 <Text style={styles.subscriptionTitle}>{plan}</Text>
-                <Text style={[Typography.bodyMd, { color: Colors.onPrimaryContainer }]}>Renewal: Oct 24, 2024</Text>
+                <Text style={[Typography.bodyMd, { color: Colors.onPrimaryContainer }]}>Renewal: {renewalLabel}</Text>
               </View>
               <TouchableOpacity style={styles.managePlanBtn} activeOpacity={0.85}>
                 <Text style={styles.managePlanText}>Manage Plan</Text>

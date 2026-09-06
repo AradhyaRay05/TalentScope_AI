@@ -146,7 +146,7 @@ export default function CoachProfileScreen({ navigation, route }: any) {
   const title = coach.title || '';
   const rating = coach.rating != null ? String(coach.rating) : null;
   const reviewsCount = coach.reviewsCount != null && coach.reviewsCount > 0 ? String(coach.reviewsCount) : null;
-  const experienceYears = coach.experienceYears != null ? `${coach.experienceYears}+ Years Experience` : null;
+  const experienceYears = coach.experienceYears != null ? `${coach.experienceYears}+ Years of Experience` : null;
   const affiliation = coach.affiliation || null;
   const bio = coach.bio || null;
   const credentials = Array.isArray(coach.credentials) ? coach.credentials.filter(Boolean) : [];
@@ -184,7 +184,7 @@ export default function CoachProfileScreen({ navigation, route }: any) {
       {(affiliation || rating || experienceYears) && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.base }}>
           {affiliation && <MetaChip icon="location-on" text={affiliation} />}
-          {rating && <MetaChip icon="star" text={rating} bold suffix={reviewsCount ? `(${reviewsCount} Reviews)` : undefined} />}
+          {rating && <MetaChip icon="star" text={rating} bold suffix={reviewsCount ? `(${reviewsCount} reviews)` : undefined} />}
           {experienceYears && <MetaChip icon="workspace-premium" text={experienceYears} />}
         </View>
       )}
@@ -214,7 +214,7 @@ export default function CoachProfileScreen({ navigation, route }: any) {
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
-              <Text style={styles.bookAssessmentText}>Book Assessment</Text>
+              <Text style={styles.bookAssessmentText}>Book Consultation</Text>
               <Icon name="calendar-today" size={18} color="#ffffff" />
             </>
           )}

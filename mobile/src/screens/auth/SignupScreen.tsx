@@ -280,7 +280,7 @@ export default function SignupScreen({ navigation }: any) {
           disabled={submitting}
         >
           <Text style={styles.submitText}>
-            {submitting ? 'CALIBRATING PROFILE...' : 'CREATE ACCOUNT & VERIFY'}
+            {submitting ? 'CREATING PROFILE...' : 'CREATE ACCOUNT & VERIFY'}
           </Text>
           {!submitting && <Icon name="check-circle" size={18} color="#ffffff" />}
         </TouchableOpacity>
@@ -288,7 +288,7 @@ export default function SignupScreen({ navigation }: any) {
         <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
           <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant }]}>Already have an account? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.loginLink}>Login</Text>
+            <Text style={styles.loginLink}>Log In</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

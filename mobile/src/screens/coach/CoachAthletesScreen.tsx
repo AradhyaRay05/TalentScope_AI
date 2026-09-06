@@ -232,7 +232,7 @@ function AthleteCard({ athlete: a, navigation }: { athlete: any; navigation: any
           <Text style={styles.athleteName}>{a.name}</Text>
           <Text style={styles.athleteMeta}>
             {[
-              a.age != null ? `${a.age} yrs` : null,
+              a.age != null ? `${a.age} yrs old` : null,
               a.primarySport,
               a.tier
             ]
@@ -242,7 +242,7 @@ function AthleteCard({ athlete: a, navigation }: { athlete: any; navigation: any
         </View>
         <View style={[styles.riskPill, { backgroundColor: `${riskColor}22` }]}>
           <Text style={[styles.riskPillText, { color: riskColor }]}>
-            {(a.currentInjuryRiskLevel ?? '--').toString().toUpperCase()} RISK
+            {(a.currentInjuryRiskLevel ?? 'NO RISK DATA').toString().toUpperCase()}{a.currentInjuryRiskLevel ? ' RISK' : ''}
           </Text>
         </View>
       </View>

@@ -12,7 +12,7 @@ const PACKAGES = [
     dark: false,
     features: [
       { text: '3 AI Assessments/mo', included: true },
-      { text: 'Public Market Access', included: true },
+      { text: 'Public Marketplace Access', included: true },
       { text: 'Elite Biometric Tracking', included: false }
     ],
     cta: 'Select Foundation'
@@ -108,7 +108,7 @@ export default function FindCoachScreen({ navigation }: any) {
     rating: c.rating != null ? String(c.rating) : null,
     specialty: (c.title || (Array.isArray(c.specialties) && c.specialties[0]) || '').toUpperCase(),
     name: c.name || 'Coach',
-    exp: c.experienceYears != null ? `${c.experienceYears}+ Years Exp.` : null,
+    exp: c.experienceYears != null ? `${c.experienceYears}+ Years of Experience` : null,
     price: c.hourlyRate != null && c.hourlyRate !== '' ? String(c.hourlyRate) : null,
     quote: c.bio ? `"${c.bio}"` : null,
     tags: Array.isArray(c.specialties) ? c.specialties.slice(0, 3) : []
@@ -346,7 +346,7 @@ export default function FindCoachScreen({ navigation }: any) {
                     {p.price}
                   </Text>
                   <Text style={[Typography.bodyMd, { marginLeft: 4, color: p.dark ? Colors.onPrimaryContainer : Colors.onSurfaceVariant }]}>
-                    /month
+                    /mo
                   </Text>
                 </View>
                 {p.features.map(f => (
